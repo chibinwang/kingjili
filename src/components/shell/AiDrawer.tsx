@@ -12,6 +12,7 @@ import type { InsightsReport, InsightsTopic, RangePreset } from "@/lib/insights/
 import { can } from "@/lib/permissions";
 import { useCurrentUser, useDb, useStore } from "@/lib/store";
 import { DEMO_TODAY } from "@/lib/time";
+import { useIsClient } from "../ui";
 import { InsightsLauncher, InsightsProgress, InsightsReportCard, InsightsReportModal } from "../insights/Insights";
 import { TaskCard } from "../TaskCard";
 
@@ -39,6 +40,7 @@ export function AiDrawer() {
   const [thinking, setThinking] = useState(false);
   const [openReport, setOpenReport] = useState<InsightsReport | null>(null);
   const user = useCurrentUser();
+  const client = useIsClient();
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -121,7 +123,7 @@ export function AiDrawer() {
     }
   };
 
-  if (!open || typeof document === "undefined") return null;
+  if (!open || !client) return null;
   return createPortal(
     <div className="no-print fixed inset-y-0 right-0 z-40 flex w-full max-w-[460px] animate-slide-in flex-col border-l border-line bg-paper shadow-[var(--shadow-pop)]">
       <div className="flex items-center justify-between gap-3 border-b border-line bg-surface px-5 py-3.5">

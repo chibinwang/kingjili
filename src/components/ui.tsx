@@ -2,10 +2,19 @@
 
 import { cva, type VariantProps } from "class-variance-authority";
 import { X } from "lucide-react";
-import { useEffect, useId, type ReactNode } from "react";
+import { useEffect, useId, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/cn";
 import { formatTWD, type Cents } from "@/lib/money";
+
+const noopSubscribe = () => () => {};
+/**
+ * False on the server and during hydration, true afterwards. Portals (drawers, modals) wait for it, so a drawer that is
+ * open on first load (e.g. ?open=C06) renders after hydration instead of mismatching the server HTML.
+ */
+export function useIsClient(): boolean {
+  return useSyncExternalStore(noopSubscribe, () => true, () => false);
+}
 
 export const buttonStyles = cva(
   "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] text-[13px] font-medium transition-[background,border,color,box-shadow] duration-150 disabled:pointer-events-none disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber/50",
@@ -186,7 +195,8 @@ function useEscape(open: boolean, onClose: () => void) {
 export function Drawer({ open, onClose, title, sub, children, footer, width = 560 }: { open: boolean; onClose: () => void; title: ReactNode; sub?: ReactNode; children: ReactNode; footer?: ReactNode; width?: number }) {
   useEscape(open, onClose);
   const titleId = useId();
-  if (!open || typeof document === "undefined") return null;
+  const client = useIsClient();
+  if (!open || !client) return null;
   return createPortal(
     <div className="no-print fixed inset-0 z-50">
       <div className="absolute inset-0 animate-fade bg-ink/20 backdrop-blur-[1px]" onClick={onClose} />
@@ -211,7 +221,8 @@ export function Drawer({ open, onClose, title, sub, children, footer, width = 56
 export function Modal({ open, onClose, title, sub, children, footer, width = 760 }: { open: boolean; onClose: () => void; title: ReactNode; sub?: ReactNode; children: ReactNode; footer?: ReactNode; width?: number }) {
   useEscape(open, onClose);
   const titleId = useId();
-  if (!open || typeof document === "undefined") return null;
+  const client = useIsClient();
+  if (!open || !client) return null;
   return createPortal(
     <div className="no-print fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 pt-[6vh]">
       <div className="fixed inset-0 animate-fade bg-ink/25 backdrop-blur-[1px]" onClick={onClose} />
