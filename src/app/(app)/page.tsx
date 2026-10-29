@@ -11,7 +11,7 @@ import { WarehouseIso } from "@/components/WarehouseIso";
 import { METHOD_LABEL } from "@/lib/domain/ar";
 import { formatCompactTWD, formatTWD } from "@/lib/money";
 import { can } from "@/lib/permissions";
-import { arSummary, collectionsFor, maps, routeView, salesMetrics, todayOrders, weeklyPnlView } from "@/lib/selectors";
+import { arSummary, collectionsFor, maps, pnlSeriesView, routeView, salesMetrics, todayOrders } from "@/lib/selectors";
 import { useCurrentUser, useDb } from "@/lib/store";
 import { formatDateTime } from "@/lib/time";
 
@@ -55,7 +55,8 @@ function Ops() {
   const ready = orders.filter((o) => ["Reserved", "Picking"].includes(o.state)).length;
   const drafts = db.orders.filter((o) => o.state === "Draft").length + db.inbox.filter((x) => x.status === "new").length;
 
-  const weeks = weeklyPnlView(db);
+  const series = { week: pnlSeriesView(db, "week"), month: pnlSeriesView(db, "month"), year: pnlSeriesView(db, "year") };
+  const dataFrom = useMemo(() => db.arDocs.reduce<string | null>((a, d) => (d.type === "charge" && (!a || d.issueDate < a) ? d.issueDate : a), null), [db.arDocs]);
   const cod = collectionsFor(db, "all");
 
   const recentPayments = useMemo(() => [...db.payments].filter((p) => !p.reversalOf).sort((a, b) => b.collectedAt.localeCompare(a.collectedAt)).slice(0, 6), [db.payments]);
@@ -96,7 +97,7 @@ function Ops() {
 
       <div className="grid gap-5 xl:grid-cols-[1fr_420px]">
         <div className="self-start">
-          <RevenueTrendPanel weeks={weeks} showMargin={showMargin} />
+          <RevenueTrendPanel series={series} showMargin={showMargin} dataFrom={dataFrom} />
         </div>
         <div className="space-y-5">
           <Card>

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { completeDelivery, receivePurchaseOrder, type ActCtx } from "../actions";
 import type { Db } from "../db";
-import { marginBp, periodPnl, stockMovement, weeklyPnl } from "../domain/reports";
+import { marginBp, periodPnl, pnlSeries, stockMovement, weeklyPnl } from "../domain/reports";
 import { sum } from "../money";
 import { salesMetrics } from "../selectors";
 import { buildSeed } from "../seed";
@@ -71,5 +71,32 @@ describe("stock movement (進銷存)", () => {
     if (!po) return;
     db = receivePurchaseOrder(db, as(db, "warehouse"), po.id, "T-1", "2027-06-30");
     expect(db.purchaseOrders.find((p) => p.id === po.id)!.receivedAt).toBe("2026-10-24");
+  });
+});
+
+describe("P&L series by week, month and year", () => {
+  const db = buildSeed();
+  it("weeks match the weekly P&L and end with the current partial week", () => {
+    const s = pnlSeries(db.arDocs, db.products, "2026-10-24", "week", 12);
+    expect(s).toHaveLength(12);
+    expect(s.at(-1)).toMatchObject({ start: "2026-10-19", end: "2026-10-24", partial: true });
+  });
+
+  it("months start at the first month with deliveries; the current month runs to today", () => {
+    const s = pnlSeries(db.arDocs, db.products, "2026-10-24", "month", 12);
+    expect(s.map((p) => [p.start, p.end, p.partial])).toEqual([
+      ["2026-08-01", "2026-08-31", false],
+      ["2026-09-01", "2026-09-30", false],
+      ["2026-10-01", "2026-10-24", true],
+    ]);
+    expect(s.at(-1)!.revenue).toBe(salesMetrics(db).monthRevenue);
+  });
+
+  it("years cover the data so far and add up to the months", () => {
+    const y = pnlSeries(db.arDocs, db.products, "2026-10-24", "year", 5);
+    const m = pnlSeries(db.arDocs, db.products, "2026-10-24", "month", 12);
+    expect(y).toHaveLength(1);
+    expect(y[0]).toMatchObject({ start: "2026-01-01", end: "2026-10-24", partial: true });
+    expect(y[0].revenue).toBe(m.reduce((a, p) => a + p.revenue, 0));
   });
 });

@@ -216,3 +216,38 @@ export function changeBp(now: Cents, before: Cents): number | null {
 }
 
 export type CustomerLike = Pick<Customer, "id" | "name">;
+
+export type Grain = "week" | "month" | "year";
+
+export interface PeriodPoint extends PnlLine {
+  /** First and last day of the bucket; the current bucket ends at `today`. */
+  start: string;
+  end: string;
+  partial: boolean;
+}
+
+/**
+ * Revenue / cost / profit per week, month or year, oldest first, the last bucket ending at `today`.
+ * Months and years before the first delivery are dropped, so a young ledger is not padded with empty periods.
+ */
+export function pnlSeries(docs: readonly ArDocument[], products: readonly Product[], today: string, grain: Grain, count: number): PeriodPoint[] {
+  if (grain === "week") return weeklyPnl(docs, products, today, count).map(({ weekStart, weekEnd, ...rest }) => ({ ...rest, start: weekStart, end: weekEnd }));
+  const [y, m] = today.split("-").map(Number);
+  const buckets = Array.from({ length: count }, (_, i) => {
+    const back = count - 1 - i;
+    if (grain === "year") return { start: `${y - back}-01-01`, fullEnd: `${y - back}-12-31` };
+    const idx = y * 12 + (m - 1) - back;
+    const by = Math.floor(idx / 12);
+    const bm = (idx % 12) + 1;
+    const start = `${by}-${String(bm).padStart(2, "0")}-01`;
+    const next = bm === 12 ? `${by + 1}-01-01` : `${by}-${String(bm + 1).padStart(2, "0")}-01`;
+    return { start, fullEnd: addDays(next, -1) };
+  });
+  const firstCharge = docs.reduce<string | null>((a, d) => (d.type === "charge" && (!a || d.issueDate < a) ? d.issueDate : a), null);
+  return buckets
+    .filter((b) => firstCharge !== null && b.fullEnd >= firstCharge)
+    .map((b) => {
+      const end = b.fullEnd > today ? today : b.fullEnd;
+      return { ...periodPnl(docs, products, b.start, end).total, start: b.start, end, partial: b.fullEnd > today };
+    });
+}

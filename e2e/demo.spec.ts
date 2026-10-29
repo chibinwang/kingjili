@@ -404,6 +404,14 @@ test("driver screen sums today's collections per customer", async ({ page }) => 
 test("insights report: pick a topic, AI pulls ledger data, every number is verified", async ({ page }) => {
   await fresh(page, "/");
   await expect(page.getByTestId("revenue-trend-chart")).toBeVisible();
+  // weekly by default; month and year on demand
+  const trend = page.getByTestId("revenue-trend-panel");
+  await expect(trend.getByRole("tab", { name: "週", exact: true })).toHaveAttribute("aria-selected", "true");
+  await trend.getByRole("tab", { name: "月", exact: true }).click();
+  await expect(trend.getByText("上月營收 2026 年 9 月")).toBeVisible();
+  await trend.getByRole("tab", { name: "年", exact: true }).click();
+  await expect(trend.getByText(/目前只有今年至今的資料/)).toBeVisible();
+  await trend.getByRole("tab", { name: "週", exact: true }).click();
   await page.getByRole("button", { name: "問 AI" }).click();
   await page.getByRole("button", { name: "洞察報告" }).first().click();
   const launcher = page.getByTestId("insights-launcher");
