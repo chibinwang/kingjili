@@ -98,7 +98,17 @@ export function DriverView() {
                   <Badge tone="ok" dot>
                     {timePart(d.deliveredAt!)} 已送達
                   </Badge>
-                  <span className="text-muted">已建立應收與日結單</span>
+                  {(() => {
+                    const doc = db.arDocs.find((x) => x.type === "charge" && x.sourceDeliveryId === d.id);
+                    const inv = doc && db.invoices.find((x) => x.sourceArIds.includes(doc.id));
+                    return inv?.invoiceNo ? (
+                      <a href={`/print/invoice?id=${inv.id}`} target="_blank" rel="noreferrer" className="font-medium text-ink underline decoration-line-strong underline-offset-2">
+                        列印證明聯 {inv.invoiceNo}
+                      </a>
+                    ) : (
+                      <span className="text-muted">{inv ? "發票待預檢，請會計確認" : "已建立應收與日結單"}</span>
+                    );
+                  })()}
                 </div>
               ) : (
                 <Button variant="primary" size="lg" className="mt-3 h-12 w-full" onClick={() => setStopId(s.deliveryId)}>

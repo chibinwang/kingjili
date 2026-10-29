@@ -7,9 +7,11 @@ import { Badge, Button, Drawer, Field, Input, Money, Segmented, Select } from "@
 import { activePlan, createManualOrder, pasteOrderText } from "@/lib/actions";
 import { TERMS_LABEL } from "@/lib/domain/ar";
 import { fieldErrors, orderSchema, type OrderInput } from "@/lib/domain/forms";
-import { PRICE_TIER_LABEL, resolvePrice } from "@/lib/domain/pricing";
+import { linePricing, PRICE_TIER_LABEL, quotedUnitPrice, resolvePrice } from "@/lib/domain/pricing";
+import { linesTotals } from "@/lib/domain/orders";
+import { BASIS_LABEL } from "@/lib/domain/taxcalc";
 import type { Product } from "@/lib/domain/types";
-import { formatTWD, lineAmount, taxOnExclusive, twd } from "@/lib/money";
+import { formatTWD, lineAmount, twd } from "@/lib/money";
 import { arSummary, crmRows, maps, stockPositions } from "@/lib/selectors";
 import { useDb, useStore } from "@/lib/store";
 import { addDays, DEMO_TODAY, formatDate } from "@/lib/time";
@@ -29,19 +31,22 @@ export function OrderForm({ onClose, onCreated, initialCustomerId }: { onClose: 
   const ar = c ? arSummary(db).rows.find((r) => r.customerId === c.id) : undefined;
   const crm = c ? crmRows(db).find((r) => r.customerId === c.id) : undefined;
 
-  const listPrice = (p: Product) => resolvePrice(db.customerPrices, c, p, v.deliveryDate).cents;
-  const isContract = (p: Product) => resolvePrice(db.customerPrices, c, p, v.deliveryDate).source === "contract";
+  const resolved = (p: Product) => resolvePrice(db.customerPrices, c, p, v.deliveryDate);
+  // the price in the basis this customer is quoted (含稅 or 未稅); 改價 is typed in the same basis
+  const listPrice = (p: Product) => quotedUnitPrice(resolved(p));
+  const isContract = (p: Product) => resolved(p).source === "contract";
+  const isIncluded = (p: Product) => resolved(p).basis === "included";
   const priceOf = (l: Line, p: Product) => (l.priceOverride === null ? listPrice(p) : twd(l.priceOverride));
   const baseQty = (l: Line, p: Product) => (l.unit === "pack" ? l.qty * p.packSize : l.qty);
 
   const totals = useMemo(() => {
-    let ex = 0;
-    for (const l of v.lines) {
+    const lines = v.lines.flatMap((l) => {
       const p = m.products.get(l.productId);
-      if (p && Number.isInteger(l.qty) && l.qty > 0) ex += lineAmount(baseQty(l, p), priceOf(l, p));
-    }
-    const tax = taxOnExclusive(ex);
-    return { ex, tax, total: ex + tax };
+      if (!p || !Number.isInteger(l.qty) || l.qty <= 0) return [];
+      return [{ id: "", productId: p.id, qty: l.qty, unit: l.unit, qtyBase: baseQty(l, p), taxRateBp: 500, ...linePricing(resolved(p), l.priceOverride === null ? null : twd(l.priceOverride)) }];
+    });
+    const t = linesTotals(lines);
+    return { ex: t.exTax, tax: t.tax, total: t.total, basis: t.basis };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [v.lines, v.deliveryDate, c, m.products, db.customerPrices]);
 
@@ -222,11 +227,12 @@ export function OrderForm({ onClose, onCreated, initialCustomerId }: { onClose: 
                         }}
                         className={`num ${changed ? "border-warn" : ""}`}
                         aria-label={`第 ${i + 1} 列單價`}
-                        title={p ? `每${p.baseUnit}未稅單價` : undefined}
+                        title={p ? `每${p.baseUnit}${isIncluded(p) ? "含稅" : "未稅"}單價` : undefined}
                       />
                       {p && (
                         <div className="mt-1 text-right text-[11px] text-muted">
                           {isContract(p) && !changed && <span className="mr-1 text-amber-deep">合約價</span>}
+                          {isIncluded(p) && <span className="mr-1">含稅</span>}
                           {formatTWD(lineAmount(need, priceOf(l, p)))}
                         </div>
                       )}
@@ -257,7 +263,7 @@ export function OrderForm({ onClose, onCreated, initialCustomerId }: { onClose: 
 
         <div className="ml-auto max-w-[280px] space-y-1 text-[13px]">
           <div className="flex justify-between text-muted">
-            <span>未稅小計</span>
+            <span>銷售額（未稅）・{BASIS_LABEL[totals.basis]}</span>
             <Money cents={totals.ex} />
           </div>
           <div className="flex justify-between text-muted">
@@ -275,7 +281,7 @@ export function OrderForm({ onClose, onCreated, initialCustomerId }: { onClose: 
             此單加上目前應收將超過信用額度 {formatTWD(c.creditLimitCents)}。仍可建立，建議先與客戶確認付款。
           </div>
         )}
-        <p className="text-[11.5px] text-muted">單價為每基本單位（包／袋）未稅價；配送日 {formatDate(v.deliveryDate, { weekday: true })}。</p>
+        <p className="text-[11.5px] text-muted">單價為每基本單位（包／袋），依客戶報價方式為含稅或未稅價，改價也用同一種；配送日 {formatDate(v.deliveryDate, { weekday: true })}。</p>
       </div>
     </Drawer>
   );

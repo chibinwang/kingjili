@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, useSyncExternalStore } from "react";
 import { Badge, Button, Card, Drawer, Empty, Field, Input, Money, Segmented, Select } from "@/components/ui";
 import { addCustomerNote } from "@/lib/actions";
-import { AgreedPriceCardLine, AgreedPriceCell, AgreedPriceTable, agreedPriceShort } from "./AgreedPrices";
+import { AgreedPriceCardLine, AgreedPriceCell, AgreedPriceTable, agreedPriceShort, PriceBasisControl } from "./AgreedPrices";
 import { cn } from "@/lib/cn";
 import { TERMS_LABEL } from "@/lib/domain/ar";
 import { CRM_STATUS_LABEL, NOTE_KIND_LABEL, tenureLabel, type CrmRow } from "@/lib/domain/crm";
@@ -540,6 +540,7 @@ function CustomerPanel({ item: { c, r }, onClose, onPrev, onNext, onAr }: { item
                   </button>
                 }
               />
+              <Row k="報價方式" v={<PriceBasisControl c={c} />} />
               <Row k="發票" v={c.invoiceClass === "B2B" ? `B2B・統編 ${c.taxId}` : `B2C${c.carrier ? `・${c.carrier.type === "mobile" ? "手機條碼" : c.carrier.type === "member" ? "會員載具" : "自然人憑證"}` : "・紙本"}`} />
               <Row
                 k="LINE"

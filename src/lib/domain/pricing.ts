@@ -1,5 +1,6 @@
 import { DEFAULT_TAX_POLICY, roundToUnit, splitInclusive, type Cents, type TaxPolicy } from "../money";
-import type { Customer, CustomerPrice, Product, PriceTier } from "./types";
+import type { PriceBasis } from "./taxcalc";
+import type { Customer, CustomerPrice, OrderLine, Product, PriceTier } from "./types";
 
 /**
  * Single source of truth for "what does this customer pay for this product on this date".
@@ -10,11 +11,16 @@ import type { Customer, CustomerPrice, Product, PriceTier } from "./types";
 export const PRICE_TIER_LABEL: Record<PriceTier, string> = { standard: "一般價", volume: "量販價", vip: "VIP 價" };
 
 export interface ResolvedPrice {
+  /** Ex-tax price per base unit (derived for tax-included quotes). */
   cents: Cents;
   source: "contract" | "tier";
   /** The tier price the customer would otherwise pay — the reference for 改價 and discount display. */
   tierCents: Cents;
   agreement?: CustomerPrice;
+  /** How this price is quoted to the customer. */
+  basis: PriceBasis;
+  /** Tax-included price per base unit — the figure that counts when basis is "included". */
+  inclCents?: Cents;
 }
 
 /** The agreement row in effect for one customer × product on `date` (latest effectiveFrom ≤ date), if any. */
@@ -31,10 +37,43 @@ export function tierPrice(product: Product, customer?: Pick<Customer, "priceTier
   return product.price[customer?.priceTier ?? "standard"];
 }
 
+/** Tax-included equivalent of an ex-tax tier price, rounded to whole TWD (tier prices are kept ex-tax). */
+export function tierInclusive(exCents: Cents, policy: TaxPolicy = DEFAULT_TAX_POLICY): Cents {
+  return roundToUnit(Math.round((exCents * (10000 + policy.rateBp)) / 10000), 100);
+}
+
+/** Tax-included price per base unit of a tax-included quote (per 箱 quotes are divided, to the cent). */
+function quotedInclPerBase(quote: NonNullable<CustomerPrice["quoted"]>, product: Pick<Product, "packSize">): Cents {
+  return quote.unit === "pack" ? Math.round(quote.amountCents / product.packSize) : quote.amountCents;
+}
+
 export function resolvePrice(prices: readonly CustomerPrice[], customer: Customer | undefined, product: Product, date: string): ResolvedPrice {
   const tierCents = tierPrice(product, customer);
   const agreement = customer ? agreementOn(prices, customer.id, product.id, date) : undefined;
-  return agreement ? { cents: agreement.priceExTaxCents!, source: "contract", tierCents, agreement } : { cents: tierCents, source: "tier", tierCents };
+  if (agreement) {
+    const q = agreement.quoted;
+    if (q?.taxIncluded) {
+      const inclCents = quotedInclPerBase(q, product);
+      return { cents: Math.round((inclCents * 10000) / (10000 + DEFAULT_TAX_POLICY.rateBp)), source: "contract", tierCents, agreement, basis: "included", inclCents };
+    }
+    return { cents: agreement.priceExTaxCents!, source: "contract", tierCents, agreement, basis: "excluded" };
+  }
+  if (customer?.priceBasis === "included") return { cents: tierCents, source: "tier", tierCents, basis: "included", inclCents: tierInclusive(tierCents) };
+  return { cents: tierCents, source: "tier", tierCents, basis: "excluded" };
+}
+
+/** The price shown to / typed by people, in the basis the customer is quoted. */
+export function quotedUnitPrice(r: Pick<ResolvedPrice, "basis" | "cents" | "inclCents">): Cents {
+  return r.basis === "included" ? r.inclCents! : r.cents;
+}
+
+/** Pricing fields of an order line. `overrideCents` (改價) is in the line's own basis. */
+export function linePricing(r: ResolvedPrice, overrideCents?: Cents | null): Pick<OrderLine, "unitPriceExTaxCents" | "priceBasis" | "unitPriceInclTaxCents"> {
+  if (r.basis === "included") {
+    const incl = overrideCents ?? r.inclCents!;
+    return { priceBasis: "included", unitPriceInclTaxCents: incl, unitPriceExTaxCents: Math.round((incl * 10000) / (10000 + DEFAULT_TAX_POLICY.rateBp)) };
+  }
+  return { priceBasis: "excluded", unitPriceExTaxCents: overrideCents ?? r.cents };
 }
 
 /**

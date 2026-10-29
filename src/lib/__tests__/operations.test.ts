@@ -154,7 +154,20 @@ describe("delivery & collection", () => {
     expect(doc.totalCents).toBe(twd(2520));
     const p = next.payments.find((x) => x.deliveryId === "d-2026-10-24-AH03")!;
     expect(p.custody).toBe("collected");
-    expect(next.invoices.some((i) => i.sourceArIds.includes(doc.id) && i.providerStatus === "staged")).toBe(true);
+    // 單趟開立: issued (numbered) at delivery when it passes preflight, waiting to be uploaded
+    const inv = next.invoices.find((i) => i.sourceArIds.includes(doc.id))!;
+    expect(inv).toMatchObject({ source: "per_delivery", providerStatus: "ready", totalCents: doc.totalCents, uploadDueOn: "2026-10-26" });
+    expect(inv.invoiceNo).toMatch(/^ZX\d{8}$/);
+  });
+
+  it("monthly customers also get one invoice per delivery, with 7-decimal ex-tax lines", () => {
+    const db = buildSeed();
+    const d = db.deliveries.find((x) => x.date === "2026-10-24" && x.customerId === "C01")!;
+    const next = completeDelivery(db, as(db, "driver"), d.id);
+    const inv = next.invoices.find((i) => i.sourceArIds.some((id) => next.arDocs.find((a) => a.id === id)?.sourceDeliveryId === d.id))!;
+    expect(inv).toMatchObject({ invoiceClass: "B2B", buyerTaxId: "00001102", providerStatus: "ready", uploadDueOn: "2026-10-31" });
+    expect(inv.lines!.length).toBeGreaterThan(0);
+    expect(inv.lines!.every((l) => /^\d+(\.\d{1,7})?$/.test(l.unitPriceEx))).toBe(true);
   });
 });
 

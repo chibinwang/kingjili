@@ -1,4 +1,5 @@
-import { DEFAULT_TAX_POLICY, lineAmount, roundToUnit, sum, taxOnExclusive, type Cents } from "../money";
+import { roundToUnit, sum, type Cents } from "../money";
+import { linesTotals } from "./orders";
 import { isReversed } from "./ar";
 import type { PickConfirmation } from "./picking";
 import type { ArDocument, Customer, Delivery, OrderLine, Payment, RouteStop, SalesOrder } from "./types";
@@ -19,9 +20,7 @@ export function billableLines(order: SalesOrder, picks: Record<string, PickConfi
 }
 
 export function linesTotal(lines: OrderLine[]): { exTax: Cents; tax: Cents; total: Cents } {
-  const exTax = sum(lines.map((l) => lineAmount(l.qtyBase, l.unitPriceExTaxCents)));
-  const tax = taxOnExclusive(exTax, DEFAULT_TAX_POLICY);
-  return { exTax, tax, total: exTax + tax };
+  return linesTotals(lines);
 }
 
 /** The share of a delivery's total collected on the spot. Mixed terms round down to NT$100 (existing policy). */

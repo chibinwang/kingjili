@@ -431,7 +431,7 @@ function StatementDrawer({ customer, period, setPeriod, onClose }: { customer: C
                 <td className="num">{formatDate(l.date)}</td>
                 <td className="num">{l.refNo}</td>
                 <td>{l.description}</td>
-                <td className="num text-muted">{l.invoiceNo ?? (l.refType === "charge" ? (customer.settlementTerms === "daily" ? "—" : "月底彙開") : "")}</td>
+                <td className="num text-muted">{l.invoiceNo ?? (l.refType === "charge" ? "未開立" : "")}</td>
                 <td className="r">{l.exTaxCents ? <Money cents={l.exTaxCents} /> : ""}</td>
                 <td className="r">{l.taxCents ? <Money cents={l.taxCents} /> : ""}</td>
                 <td className="r">{l.debitCents ? <Money cents={l.debitCents} /> : ""}</td>

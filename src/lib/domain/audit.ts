@@ -1,4 +1,5 @@
-import { taxOnExclusive, type Cents, type TaxPolicy, DEFAULT_TAX_POLICY } from "../money";
+import { type Cents, type TaxPolicy, DEFAULT_TAX_POLICY } from "../money";
+import { expectedTax, PER_TRIP_FROM } from "./invoices";
 import { periodRange } from "../time";
 import { customerBalance, customerBalanceViaAllocations, isReversed, paymentUnapplied } from "./ar";
 import { buildStatement } from "./statements";
@@ -190,7 +191,8 @@ export function runMonthEndAudit(input: AuditInput): CheckResult[] {
     const corrections = docs.filter((x) => x.correctsDocId === d.id);
     const netEx = d.exTaxCents + corrections.reduce((a, x) => a + (x.type === "credit_note" ? -x.exTaxCents : x.exTaxCents), 0);
     const netTax = d.taxCents + corrections.reduce((a, x) => a + (x.type === "credit_note" ? -x.taxCents : x.taxCents), 0);
-    const expected = taxOnExclusive(netEx, policy);
+    // recomputed from the items in their quoted basis (含稅／未稅／混合); older documents fall back to ex-tax × 5%
+    const expected = netEx === d.exTaxCents ? expectedTax(d.items, d.exTaxCents, policy) : expectedTax(undefined, netEx, policy);
     if (netTax !== expected || d.totalCents !== d.exTaxCents + d.taxCents) {
       flag({
         check: "tax_mismatch",
@@ -222,7 +224,8 @@ export function runMonthEndAudit(input: AuditInput): CheckResult[] {
   // invoices
   for (const d of pDocs.filter((x) => x.type === "charge")) {
     const c = byId.get(d.customerId);
-    if (c?.settlementTerms !== "daily") continue;
+    // 單趟開立 for everyone from PER_TRIP_FROM; before that only daily customers were invoiced per delivery
+    if (!c || (c.settlementTerms !== "daily" && d.issueDate < PER_TRIP_FROM)) continue;
     if (!invoices.some((i) => i.sourceArIds.includes(d.id) && i.providerStatus !== "voided")) {
       flag({
         check: "missing_invoice",

@@ -3,9 +3,10 @@
 import { FileCheck2, Pencil } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Badge, Button, Card, CardHeader, Field, Input, Modal, Money, PageHeader, Segmented } from "@/components/ui";
-import { fixInvoiceCarrier, preflightInvoices, stageMonthlyInvoice, submitInvoicesMock } from "@/lib/actions";
+import Link from "next/link";
+import { fixInvoiceCarrier, preflightInvoices, submitInvoicesMock } from "@/lib/actions";
 import { cn } from "@/lib/cn";
-import { GOV_STATUS_LABEL, PROVIDER_STATUS_LABEL } from "@/lib/domain/invoices";
+import { BASIS_LABEL, GOV_STATUS_LABEL, PER_TRIP_FROM, PROVIDER_STATUS_LABEL } from "@/lib/domain/invoices";
 import type { TaxInvoice } from "@/lib/domain/types";
 import { formatTWD } from "@/lib/money";
 import { useDb, useStore } from "@/lib/store";
@@ -40,7 +41,7 @@ export default function InvoicesPage() {
   );
   const staged = db.invoices.filter((i) => ["staged", "preflight_failed"].includes(i.providerStatus));
   const ready = db.invoices.filter((i) => i.providerStatus === "ready");
-  const monthlyMissing = db.customers.filter((c) => c.settlementTerms !== "daily" && !db.invoices.some((i) => i.customerId === c.id && i.period === period));
+  const overdue = (i: TaxInvoice) => !!i.uploadDueOn && i.govUploadStatus !== "uploaded_mock" && i.uploadDueOn < DEMO_TODAY;
   const month = db.invoices.filter((i) => i.period === period && i.providerStatus === "accepted");
 
   return (
@@ -48,7 +49,7 @@ export default function InvoicesPage() {
       <PageHeader
         eyebrow="E-INVOICE"
         title="電子發票"
-        sub="日結客戶逐筆開立（B2C 可用載具），月結客戶月底彙開（B2B 需統編）。綠界接收 ≠ 已上傳財政部；示範環境沒有任何實際開立或申報。"
+        sub="每趟送達即開立一張（單趟開立）；客戶可設定含稅或未稅報價，混合也可以。上傳期限：B2B 7 天、B2C 2 天。示範環境沒有任何實際開立或申報。"
         right={
           <Badge tone="mock" className="px-3 py-1 text-[12px]">
             綠界 ECPay（Mock）・模擬綠界串接／尚未上傳財政部
@@ -98,12 +99,13 @@ export default function InvoicesPage() {
                 <th>買受人</th>
                 <th>類別</th>
                 <th>統編／載具</th>
-                <th className="r">未稅</th>
+                <th>報價方式</th>
+                <th className="r">銷售額</th>
                 <th className="r">稅額</th>
                 <th className="r">含稅</th>
                 <th>發票號碼</th>
                 <th>綠界（模擬）</th>
-                <th>財政部</th>
+                <th>財政部・上傳期限</th>
                 <th />
               </tr>
             </thead>
@@ -119,6 +121,7 @@ export default function InvoicesPage() {
                     <Badge tone={i.invoiceClass === "B2B" ? "info" : "neutral"}>{i.invoiceClass}</Badge>
                   </td>
                   <td className="num text-[12.5px]">{i.buyerTaxId ?? (i.carrierType ? `${i.carrierType === "mobile" ? "手機" : i.carrierType === "member" ? "會員" : "自然人"} ${i.carrierValue}` : "紙本列印")}</td>
+                  <td className="text-[12px] whitespace-nowrap text-muted">{i.priceBasis ? BASIS_LABEL[i.priceBasis] : "未稅報價"}</td>
                   <td className="r">
                     <Money cents={i.exTaxCents} />
                   </td>
@@ -135,7 +138,10 @@ export default function InvoicesPage() {
                     </Badge>
                     {i.rejectReason && <div className="mt-0.5 max-w-[220px] text-[11px] text-bad">{i.rejectReason}</div>}
                   </td>
-                  <td className="text-[12px] text-muted">{GOV_STATUS_LABEL[i.govUploadStatus]}</td>
+                  <td className="text-[12px] text-muted">
+                    {GOV_STATUS_LABEL[i.govUploadStatus]}
+                    {i.uploadDueOn && i.govUploadStatus !== "uploaded_mock" && <div className={cn("num", overdue(i) ? "font-semibold text-bad" : "text-faint")}>{overdue(i) ? "已逾期" : "期限"} {formatDate(i.uploadDueOn)}</div>}
+                  </td>
                   <td className="r">
                     <div className="flex justify-end gap-1">
                       {["preflight_failed", "rejected", "staged"].includes(i.providerStatus) && i.carrierType && (
@@ -143,9 +149,15 @@ export default function InvoicesPage() {
                           <Pencil size={12} /> 修正載具
                         </Button>
                       )}
-                      <Button size="sm" variant="ghost" onClick={() => setPreview(i)}>
-                        預覽
-                      </Button>
+                      {i.lines ? (
+                        <Link href={`/print/invoice?id=${i.id}`} target="_blank" className="inline-flex h-8 items-center rounded-md px-2.5 text-[12.5px] text-ink-2 hover:bg-black/5">
+                          列印
+                        </Link>
+                      ) : (
+                        <Button size="sm" variant="ghost" onClick={() => setPreview(i)}>
+                          預覽
+                        </Button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -156,14 +168,9 @@ export default function InvoicesPage() {
       </Card>
 
       <Card>
-        <CardHeader title={`月結客戶 ${Number(period.slice(5))} 月彙開`} sub="月底關帳後建立草稿，經預檢與會計確認才送出" />
-        <div className="flex flex-wrap gap-2 px-5 pb-5">
-          {monthlyMissing.map((c) => (
-            <Button key={c.id} size="sm" variant="outline" onClick={() => run((d, ctx) => stageMonthlyInvoice(d, ctx, c.id, period), `已建立 ${c.name} 彙開草稿`, { asUserId: acct.id })}>
-              建立 {c.name} 彙開草稿
-            </Button>
-          ))}
-          {monthlyMissing.length === 0 && <span className="text-[12.5px] text-muted">本月彙開草稿皆已建立</span>}
+        <CardHeader title="開立方式" sub={`${formatDate(PER_TRIP_FROM, { year: true })} 起改為單趟開立：每趟送達建立應收時同時開立發票，通過預檢即配發字軌號碼`} />
+        <div className="px-5 pb-4 text-[12.5px] leading-relaxed text-muted">
+          月結客戶不再月底彙開；每月寄出的對帳單是金吉利額外提供的對帳資料，不是發票。8–9 月的彙開發票保留為歷史紀錄。報價方式在「客戶與應收」的客戶資料中設定，個別品項可用合約價另設含稅或未稅。
         </div>
         <div className="border-t border-line px-5 py-3 text-[11.5px] text-faint">
           上線前需由會計師確認：開立日期規則、字軌配號、免稅品項、二聯／三聯用語、折讓流程，並完成綠界商店申請與沙盒測試。

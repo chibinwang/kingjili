@@ -23,6 +23,7 @@ import type {
   StockLocation,
   Supplier,
   TaxInvoice,
+  InvoiceNumberRange,
   Vehicle,
 } from "./domain/types";
 
@@ -50,6 +51,8 @@ export interface Db {
   payments: Payment[];
   allocations: PaymentAllocation[];
   invoices: TaxInvoice[];
+  /** 字軌號段 (demo: one mocked range per period). */
+  invoiceRanges: InvoiceNumberRange[];
   statements: Statement[];
   events: ActionEvent[];
   memories: AgentMemory[];

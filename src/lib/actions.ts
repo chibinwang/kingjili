@@ -2,10 +2,11 @@ import { appliedFrom, isReversed, paymentUnapplied, planAllocation, planReversal
 import type { AiTask } from "./domain/ai";
 import { releaseReservations, reserveOrder } from "./domain/inventory";
 import { preflightInvoice } from "./domain/invoices";
-import { billableLines, linesTotal } from "./domain/collections";
-import { quoteToBaseExTax, resolvePrice } from "./domain/pricing";
+import { billableLines } from "./domain/collections";
+import { linePricing, quoteToBaseExTax, resolvePrice } from "./domain/pricing";
+import { expectedTax, PER_TRIP_FROM, perTripInvoice, randomCode, takeInvoiceNumber } from "./domain/invoices";
 import { parseLineOrder } from "./domain/lineParser";
-import { canTransition, findDuplicate, findLikelyDuplicate, orderTotals, toBaseQty, unitLabel } from "./domain/orders";
+import { buildCharge, canTransition, findDuplicate, findLikelyDuplicate, orderTotals, toBaseQty } from "./domain/orders";
 import { bestInsertion, evaluatePlan, ROUTING, type RoutingContext } from "./domain/routing";
 import { customerSchema, districtCentre, orderSchema, productSchema, splitAliases, supplierSchema, type CustomerInput, type OrderInput, type ProductInput, type SupplierInput } from "./domain/forms";
 import { productAliases } from "./domain/lineParser";
@@ -30,7 +31,7 @@ import type {
   Statement,
   TaxInvoice,
 } from "./domain/types";
-import { lineAmount, sum, taxOnExclusive, twd, type Cents } from "./money";
+import { sum, taxOnExclusive, twd, type Cents } from "./money";
 import { can, ROLE_LABEL, rolesFor, type Permission } from "./permissions";
 import { addDays, at, DEMO_TODAY, periodOf, periodRange } from "./time";
 import type { Db } from "./db";
@@ -170,7 +171,7 @@ export function draftFromLine(db: Db, ctx: ActCtx, messageId: string, customerHi
       qty,
       unit,
       qtyBase: toBaseQty(p, qty, unit),
-      unitPriceExTaxCents: resolvePrice(db.customerPrices, customer, p, deliveryDate).cents,
+      ...linePricing(resolvePrice(db.customerPrices, customer, p, deliveryDate)),
       taxRateBp: 500,
     };
   });
@@ -217,7 +218,7 @@ export function updateDraftLine(db: Db, ctx: ActCtx, orderId: string, index: num
     const qty = patch.qty ?? l.qty;
     const unit = patch.unit ?? l.unit;
     if (!Number.isInteger(qty) || qty < 0) throw new ActionError("數量需為正整數");
-    return { ...l, productId, qty, unit, qtyBase: toBaseQty(p, qty, unit), unitPriceExTaxCents: resolvePrice(db.customerPrices, customer, p, o.deliveryDate).cents };
+    return { ...l, productId, qty, unit, qtyBase: toBaseQty(p, qty, unit), unitPriceInclTaxCents: undefined, ...linePricing(resolvePrice(db.customerPrices, customer, p, o.deliveryDate)) };
   });
   const issues = (o.issues ?? []).map((iss) =>
     iss.lineIndex === index && ((iss.field === "unit" && patch.unit) || (iss.field === "qty" && patch.qty !== undefined)) ? { ...iss, resolved: true } : iss,
@@ -235,7 +236,7 @@ export function resolveDraftIssue(db: Db, ctx: ActCtx, orderId: string, issueInd
   if (patch?.customerId) {
     const c = db.customers.find((x) => x.id === patch.customerId)!;
     upd.customerId = c.id;
-    upd.lines = o.lines.map((l) => ({ ...l, unitPriceExTaxCents: resolvePrice(db.customerPrices, c, db.products.find((p) => p.id === l.productId)!, o.deliveryDate).cents }));
+    upd.lines = o.lines.map((l) => ({ ...l, unitPriceInclTaxCents: undefined, ...linePricing(resolvePrice(db.customerPrices, c, db.products.find((p) => p.id === l.productId)!, o.deliveryDate)) }));
   }
   tx.patch("orders", orderId, upd);
   return tx.db;
@@ -420,7 +421,8 @@ export function completeDelivery(db: Db, ctx: ActCtx, deliveryId: string, collec
   const customer = db.customers.find((c) => c.id === d.customerId)!;
   // bill what was delivered: a confirmed short pick lowers the quantity on the charge
   const delivered = billableLines(order, db.pickConfirmations);
-  const t = linesTotal(delivered);
+  const charge = buildCharge(delivered, new Map(db.products.map((p) => [p.id, p])));
+  const t = { exTax: charge.exTaxCents, tax: charge.taxCents, total: charge.totalCents };
   const docId = `ar-${d.date}-${customer.code}`;
   const doc: ArDocument = {
     id: docId,
@@ -434,35 +436,14 @@ export function completeDelivery(db: Db, ctx: ActCtx, deliveryId: string, collec
     taxCents: t.tax,
     totalCents: t.total,
     memo: `送貨單 ${d.noteNo}`,
-    items: delivered.map((l) => {
-      const p = db.products.find((x) => x.id === l.productId)!;
-      return { productId: p.id, name: p.name, qty: l.qty, unitLabel: unitLabel(p, l.unit), unitPriceExTaxCents: l.unitPriceExTaxCents, exTaxCents: lineAmount(l.qtyBase, l.unitPriceExTaxCents) };
-    }),
+    items: charge.items,
+    priceBasis: charge.priceBasis,
     createdAt: ctx.now,
     createdBy: ctx.actor.id,
   };
   tx.insert("arDocs", doc);
-  if (customer.settlementTerms === "daily") {
-    tx.insert("invoices", {
-      id: `inv-${d.date}-${customer.code}`,
-      provider: "ECPAY_MOCK",
-      invoiceClass: customer.invoiceClass,
-      customerId: customer.id,
-      sourceArIds: [docId],
-      buyerName: customer.name,
-      buyerTaxId: customer.taxId,
-      carrierType: customer.carrier?.type,
-      carrierValue: customer.carrier?.value,
-      period: periodOf(d.date),
-      issueDate: d.date,
-      exTaxCents: t.exTax,
-      taxCents: t.tax,
-      totalCents: t.total,
-      providerStatus: "staged",
-      govUploadStatus: "not_uploaded",
-      createdAt: ctx.now,
-    });
-  }
+  // 單趟開立: every delivery gets its own invoice; it is numbered (issued) at once when it passes preflight
+  issuePerTripInvoice(tx, perTripInvoice(doc, customer, ctx.now), ctx.now);
   tx.event({
     feature: "dispatch",
     entityType: "Delivery",
@@ -621,7 +602,7 @@ export function correctTax(db: Db, ctx: ActCtx, docId: string, taskId?: string):
   require(ctx, "ar.adjust");
   const tx = new Tx(db, ctx);
   const doc = tx.get("arDocs", docId);
-  const expected = taxOnExclusive(doc.exTaxCents);
+  const expected = expectedTax(doc.items, doc.exTaxCents);
   const diff = doc.taxCents - expected;
   if (diff === 0) throw new ActionError("稅額正確，無需更正");
   assertPeriodOpen(db, doc.customerId, doc.issueDate);
@@ -754,8 +735,11 @@ export function preflightInvoices(db: Db, ctx: ActCtx, ids: string[]): Db {
     const inv = tx.get("invoices", id);
     if (!["staged", "preflight_failed", "ready"].includes(inv.providerStatus)) continue;
     const issues = preflightInvoice(inv);
-    tx.patch("invoices", id, { providerStatus: issues.length ? "preflight_failed" : "ready", rejectReason: issues.map((i) => i.message).join("；") || undefined });
-    if (!issues.length) ok++;
+    if (issues.length) tx.patch("invoices", id, { providerStatus: "preflight_failed", rejectReason: issues.map((i) => i.message).join("；") });
+    else {
+      tx.patch("invoices", id, { providerStatus: "ready", rejectReason: undefined, ...(inv.invoiceNo ? {} : numberFor(tx, inv, ctx.now)) });
+      ok++;
+    }
   }
   tx.event({ feature: "invoices", entityType: "TaxInvoice", entityId: ids[0], action: "preflight", summary: `發票預檢 ${ids.length} 張：${ok} 張可送出、${ids.length - ok} 張需修正` });
   return tx.db;
@@ -783,7 +767,7 @@ export function submitInvoicesMock(db: Db, ctx: ActCtx, ids: string[]): Db {
     tx.patch("invoices", id, {
       providerStatus: "accepted",
       govUploadStatus: "pending_mock",
-      invoiceNo: `ZZ${String(30240000 + n).padStart(8, "0")}`,
+      ...(inv.invoiceNo ? {} : numberFor(tx, inv, ctx.now)),
       providerRef: `MOCK-${Date.parse(ctx.now).toString(36).toUpperCase()}-${n}`,
     });
     done.push(id);
@@ -793,8 +777,26 @@ export function submitInvoicesMock(db: Db, ctx: ActCtx, ids: string[]): Db {
   return tx.db;
 }
 
+/** Assign the next 字軌 number (開立). The invoice is immutable from here on: corrections are 作廢 or 折讓. */
+function numberFor(tx: Tx, inv: TaxInvoice, now: string): Pick<TaxInvoice, "invoiceNo" | "randomNumber" | "issuedAt"> {
+  let taken;
+  try {
+    taken = takeInvoiceNumber(tx.db.invoiceRanges, inv.issueDate);
+  } catch (e) {
+    throw new ActionError((e as Error).message);
+  }
+  tx.patch("invoiceRanges", taken.range.id, { next: taken.range.next });
+  return { invoiceNo: taken.invoiceNo, randomNumber: randomCode(inv.id), issuedAt: now };
+}
+
+function issuePerTripInvoice(tx: Tx, inv: TaxInvoice, now: string) {
+  const issues = preflightInvoice(inv);
+  tx.insert("invoices", issues.length ? { ...inv, providerStatus: "preflight_failed", rejectReason: issues.map((i) => i.message).join("；") } : { ...inv, providerStatus: "ready", ...numberFor(tx, inv, now) });
+}
+
 export function stageMonthlyInvoice(db: Db, ctx: ActCtx, customerId: string, period: string): Db {
   require(ctx, "invoice.submit");
+  if (`${period}-01` >= PER_TRIP_FROM) throw new ActionError("已改為單趟開立：每趟送達即開發票，不再月底彙開");
   const tx = new Tx(db, ctx);
   const c = db.customers.find((x) => x.id === customerId)!;
   const { start, end } = periodRange(period);
@@ -1052,6 +1054,19 @@ export function setAgreedPrice(db: Db, ctx: ActCtx, input: AgreedPriceInput): Db
   return tx.db;
 }
 
+/** 報價方式: whether this customer is quoted tax-included or tax-excluded prices. Applies to orders created from now on. */
+export function setCustomerPriceBasis(db: Db, ctx: ActCtx, customerId: string, basis: "excluded" | "included"): Db {
+  require(ctx, "price.manage");
+  const tx = new Tx(db, ctx);
+  const c = tx.get("customers", customerId);
+  const before = c.priceBasis ?? "excluded";
+  if (before === basis) return db;
+  tx.patch("customers", c.id, { priceBasis: basis });
+  const label = { excluded: "未稅報價", included: "含稅報價" } as const;
+  tx.event({ feature: "crm", entityType: "Customer", entityId: c.id, action: "set_price_basis", summary: `${c.name} 報價方式改為${label[basis]}（新訂單起適用；合約價各自依報價方式）`, before: label[before], after: label[basis] });
+  return tx.db;
+}
+
 /* ───────────────────────── Manual creation (＋) ───────────────────────── */
 
 function parseOrThrow<T>(schema: { safeParse: (v: unknown) => { success: true; data: T } | { success: false; error: { issues: { message: string }[] } } }, input: unknown): T {
@@ -1087,6 +1102,7 @@ export function createCustomer(db: Db, ctx: ActCtx, input: CustomerInput): { db:
     carrier: v.invoiceClass === "B2C" && v.carrierType !== "none" ? { type: v.carrierType, value: v.carrierValue } : undefined,
     billingContact: v.contactName || v.ownerName,
     priceTier: v.priceTier,
+    priceBasis: v.priceBasis,
     geo: districtCentre(db.customers, v.district, ROUTING.depot),
     geoPending: true,
     window: { start: v.windowStart, end: v.windowEnd },
@@ -1118,10 +1134,13 @@ export function createManualOrder(db: Db, ctx: ActCtx, input: OrderInput, confir
     const p = db.products.find((x) => x.id === l.productId);
     if (!p) throw new ActionError("找不到品項");
     // the agreed (合約) price, or the tier price when there is none — 改價 is measured against this
-    const list = resolvePrice(db.customerPrices, customer, p, v.deliveryDate).cents;
+    const resolved = resolvePrice(db.customerPrices, customer, p, v.deliveryDate);
+    // 改價 is typed in the line's own basis (含稅 or 未稅) and compared against it
+    const list = resolved.basis === "included" ? resolved.inclCents! : resolved.cents;
     const price = l.priceOverride === null ? list : twd(l.priceOverride);
-    if (price !== list) overrides.push(`${p.name} ${list / 100}→${price / 100}（${l.priceReason}）`);
-    return { id: `${orderId}-L${i + 1}`, productId: p.id, qty: l.qty, unit: l.unit, qtyBase: toBaseQty(p, l.qty, l.unit), unitPriceExTaxCents: price, taxRateBp: 500, note: price !== list ? `改價：${l.priceReason}` : undefined };
+    const basisLabel = resolved.basis === "included" ? "含稅" : "未稅";
+    if (price !== list) overrides.push(`${p.name} ${basisLabel} ${list / 100}→${price / 100}（${l.priceReason}）`);
+    return { id: `${orderId}-L${i + 1}`, productId: p.id, qty: l.qty, unit: l.unit, qtyBase: toBaseQty(p, l.qty, l.unit), ...linePricing(resolved, price), taxRateBp: 500, note: price !== list ? `改價：${l.priceReason}` : undefined };
   });
   const order: SalesOrder = {
     id: orderId,

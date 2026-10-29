@@ -1,8 +1,9 @@
 import { planAllocation } from "../domain/ar";
 import type { AiTask, LineInboxMessage } from "../domain/ai";
 import { reserveOrder, type Reservation } from "../domain/inventory";
-import { toBaseQty, unitLabel } from "../domain/orders";
-import { quoteToBaseExTax, resolvePrice } from "../domain/pricing";
+import { buildCharge, toBaseQty } from "../domain/orders";
+import { invoicePeriodOf, PER_TRIP_FROM, perTripInvoice, randomCode, takeInvoiceNumber } from "../domain/invoices";
+import { linePricing, quoteToBaseExTax, resolvePrice } from "../domain/pricing";
 import { buildStatement, snapshotHash } from "../domain/statements";
 import type {
   ActionEvent,
@@ -12,6 +13,7 @@ import type {
   CustomerPrice,
   Delivery,
   InventoryLot,
+  InvoiceNumberRange,
   OrderLine,
   Payment,
   PaymentAllocation,
@@ -22,12 +24,12 @@ import type {
   StockLocation,
   TaxInvoice,
 } from "../domain/types";
-import { lineAmount, roundToUnit, sum, taxOnExclusive, twd } from "../money";
-import { addDays, at, DEMO_TODAY, dayOfWeek, periodOf, periodRange } from "../time";
+import { roundToUnit, sum, taxOnExclusive, twd } from "../money";
+import { addDays, at, DEMO_TODAY, dayOfWeek, periodRange } from "../time";
 import type { Db } from "../db";
 import { AGENT, AGREED_PRICES, CRM_NOTES, CUSTOMERS, PRODUCTS, SUPPLIERS, TODAY_ORDERS, TODAY_SEQUENCE, USERS, VEHICLES_SEED, type CustomerSeed } from "./catalog";
 
-export const SEED_VERSION = 8;
+export const SEED_VERSION = 9;
 
 function mulberry32(seed: number) {
   let a = seed;
@@ -56,6 +58,12 @@ export function buildSeed(): Db {
   const deliveries: Delivery[] = [];
   const arDocs: ArDocument[] = [];
   const invoices: TaxInvoice[] = [];
+  // 字軌號段 (mock): one per bimonthly period the history covers
+  let invoiceRanges: InvoiceNumberRange[] = [
+    { id: "rng-2026-07", period: "2026-07", track: "ZW", start: 10240001, end: 10269999, next: 10240001, status: "active" },
+    { id: "rng-2026-09", period: "2026-09", track: "ZX", start: 10240001, end: 10269999, next: 10240001, status: "active" },
+    { id: "rng-2026-11", period: "2026-11", track: "ZY", start: 10240001, end: 10269999, next: 10240001, status: "active" },
+  ];
 
   type PayIntent = { at: string; customerId: string; amount: number; method: Payment["method"]; deliveryDocId?: string; deliveryId?: string; collector: string; note?: string; custody?: Payment["custody"]; noAllocate?: boolean };
   const payIntents: PayIntent[] = [];
@@ -78,7 +86,7 @@ export function buildSeed(): Db {
         qty,
         unit,
         qtyBase: toBaseQty(p, qty, unit),
-        unitPriceExTaxCents: resolvePrice(customerPrices, c, p, date).cents,
+        ...linePricing(resolvePrice(customerPrices, c, p, date)),
         taxRateBp: 500,
       };
     });
@@ -113,8 +121,9 @@ export function buildSeed(): Db {
       const deliveredAt = at(d, `${c.window.start.slice(0, 2)}:${String(rint(5, 50)).padStart(2, "0")}`);
       deliveries.push({ id: deliveryId, orderId, customerId: c.id, date: d, vehicleId: c.vehicle, status: "delivered", deliveredAt, noteNo: `DN-${ymd(d)}-${String(dayIdx).padStart(2, "0")}` });
 
-      const exTax = sum(lines.map((l) => lineAmount(l.qtyBase, l.unitPriceExTaxCents)));
-      let tax = taxOnExclusive(exTax);
+      const charge = buildCharge(lines, pById);
+      const exTax = charge.exTaxCents;
+      let tax = charge.taxCents;
       // Planted anomaly #2: a manually keyed tax amount on 三味食堂 10/15 (off by NT$1).
       const manualTax = c.id === "C02" && d === "2026-10-15";
       if (manualTax) tax += 100;
@@ -131,10 +140,8 @@ export function buildSeed(): Db {
         taxCents: tax,
         totalCents: exTax + tax,
         memo: `送貨單 DN-${ymd(d)}-${String(dayIdx).padStart(2, "0")}`,
-        items: lines.map((l) => {
-          const p = pById.get(l.productId)!;
-          return { productId: p.id, name: p.name, qty: l.qty, unitLabel: unitLabel(p, l.unit), unitPriceExTaxCents: l.unitPriceExTaxCents, exTaxCents: lineAmount(l.qtyBase, l.unitPriceExTaxCents) };
-        }),
+        items: charge.items,
+        priceBasis: charge.priceBasis,
         createdAt: deliveredAt,
         createdBy: manualTax ? "u-sales" : "system",
       });
@@ -161,41 +168,26 @@ export function buildSeed(): Db {
         payIntents.push({ at: deliveredAt, customerId: c.id, amount: share, method: "cash", deliveryDocId: docId, deliveryId, collector: driverName(c.vehicle), note: "混合結：當日收部分" });
       }
 
-      // invoices for daily (per delivery) customers
-      if (c.settlementTerms === "daily") {
+      // 單趟開立: daily customers always; every customer from PER_TRIP_FROM (before that, monthly customers were 月結彙開)
+      if (c.settlementTerms === "daily" || d >= PER_TRIP_FROM) {
         const age = (Date.parse(DEMO_TODAY) - Date.parse(d)) / 86400000;
-        const inv: TaxInvoice = {
-          id: `inv-${d}-${c.code}`,
-          provider: "ECPAY_MOCK",
-          invoiceClass: "B2C",
-          customerId: c.id,
-          sourceArIds: [docId],
-          buyerName: c.name,
-          carrierType: c.carrier?.type,
-          carrierValue: c.carrier?.value,
-          period: periodOf(d),
-          issueDate: d,
-          exTaxCents: exTax,
-          taxCents: tax,
-          totalCents: exTax + tax,
-          providerStatus: "accepted",
-          govUploadStatus: age > 2 ? "uploaded_mock" : "pending_mock",
-          invoiceNo: `ZZ${String(10240000 + invoices.length + 1).padStart(8, "0")}`,
-          providerRef: `MOCK-${ymd(d)}-${c.code}`,
-          createdAt: deliveredAt,
-        };
+        const inv: TaxInvoice = { ...perTripInvoice(arDocs[arDocs.length - 1], customers.find((x) => x.id === c.id)!, deliveredAt), issuedAt: deliveredAt, providerStatus: "accepted", govUploadStatus: age > (c.invoiceClass === "B2B" ? 7 : 2) ? "uploaded_mock" : "pending_mock", providerRef: `MOCK-${ymd(d)}-${c.code}` };
         if (c.id === "C07" && d === "2026-10-20") {
           inv.providerStatus = "rejected";
           inv.govUploadStatus = "not_uploaded";
-          inv.invoiceNo = undefined;
           inv.rejectReason = "手機條碼不存在於載具資料（模擬回應）";
         }
         if (d === "2026-10-22") {
           inv.providerStatus = "staged";
           inv.govUploadStatus = "not_uploaded";
-          inv.invoiceNo = undefined;
           inv.providerRef = undefined;
           if (c.id === "C05") inv.carrierValue = "/LJ05M2";
+        }
+        // numbers are taken when the invoice is issued; the staged ones get theirs at preflight
+        if (inv.providerStatus !== "staged") {
+          const t = takeInvoiceNumber(invoiceRanges, d);
+          invoiceRanges = invoiceRanges.map((r) => (r.id === t.range.id ? t.range : r));
+          Object.assign(inv, { invoiceNo: t.invoiceNo, randomNumber: randomCode(inv.id) });
         }
         invoices.push(inv);
       }
@@ -474,6 +466,8 @@ export function buildSeed(): Db {
     payments,
     allocations,
     invoices,
+    // periods that have ended are closed once the history is built
+    invoiceRanges: invoiceRanges.map((r) => (r.period < invoicePeriodOf(DEMO_TODAY) ? { ...r, status: "closed" as const } : r)),
     statements,
     events,
     memories,

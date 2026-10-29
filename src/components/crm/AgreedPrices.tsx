@@ -3,7 +3,7 @@
 import { History, Pencil, Plus, Trash2, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import { Badge, Button, Field, Input, Modal, Segmented, Select } from "@/components/ui";
-import { setAgreedPrice } from "@/lib/actions";
+import { setAgreedPrice, setCustomerPriceBasis } from "@/lib/actions";
 import { cn } from "@/lib/cn";
 import type { AgreedPriceRowInput } from "@/lib/domain/forms";
 import { agreementOn, formatBp, PRICE_TIER_LABEL, quoteToBaseExTax, tierPrice, type AgreementSummary } from "@/lib/domain/pricing";
@@ -77,6 +77,40 @@ export function AgreedPriceCell({ c }: { c: Customer }) {
   );
 }
 
+/** 報價方式 of a customer: its default basis, or 混合 when some 合約價 are quoted the other way. */
+export function customerBasis(c: Customer, s: AgreementSummary): "excluded" | "included" | "mixed" {
+  const base = c.priceBasis ?? "excluded";
+  return s.lines.some((l) => (l.agreement.quoted?.taxIncluded ? "included" : "excluded") !== base) ? "mixed" : base;
+}
+
+const BASIS_TEXT = { excluded: "未稅報價", included: "含稅報價", mixed: "混合報價" } as const;
+
+/** Shows and (with price.manage) switches the customer's default 報價方式. */
+export function PriceBasisControl({ c }: { c: Customer }) {
+  const s = useSummary(c.id);
+  const run = useStore((x) => x.run);
+  const canEdit = can(useCurrentUser().role, "price.manage");
+  const eff = customerBasis(c, s);
+  return (
+    <div className="flex flex-wrap items-center gap-2" data-testid="price-basis">
+      {canEdit ? (
+        <Segmented
+          size="sm"
+          value={c.priceBasis ?? "excluded"}
+          onChange={(b) => run((d, ctx) => setCustomerPriceBasis(d, ctx, c.id, b), `${c.name} 改為${BASIS_TEXT[b]}`)}
+          options={[
+            { value: "excluded", label: "未稅報價" },
+            { value: "included", label: "含稅報價" },
+          ]}
+        />
+      ) : (
+        <span>{BASIS_TEXT[c.priceBasis ?? "excluded"]}</span>
+      )}
+      {eff === "mixed" && <Badge tone="amber">混合：部分合約價以另一種方式報價</Badge>}
+    </div>
+  );
+}
+
 /** Phone list: short suffix. */
 export function agreedPriceShort(s: AgreementSummary): string | null {
   return s.lines.length ? `合約價 ${s.lines.length} 項` : null;
@@ -98,7 +132,7 @@ export function AgreedPriceTable({ c }: { c: Customer }) {
     <div className="space-y-3" data-testid="agreed-price-table">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-[12.5px] text-muted">
-          未列出的品項依 <b className="text-ink-2">{PRICE_TIER_LABEL[c.priceTier]}</b> 計價。訂單建立時帶入當日有效的合約價，之後改價不影響既有訂單。
+          未列出的品項依 <b className="text-ink-2">{PRICE_TIER_LABEL[c.priceTier]}</b>、以<b className="text-ink-2">{c.priceBasis === "included" ? "含稅" : "未稅"}</b>計價。訂單建立時帶入當日有效的合約價，之後改價不影響既有訂單。
         </div>
         {canEdit && (
           <Button size="sm" variant="outline" onClick={() => setEdit({})}>
@@ -209,7 +243,7 @@ function AgreedPriceEditor({ c, productId, onClose }: { c: Customer; productId?:
   const current = p ? agreementOn(db.customerPrices, c.id, p.id, DEMO_TODAY) : undefined;
   const [amount, setAmount] = useState(current?.quoted ? String(current.quoted.amountCents / 100) : "");
   const [unit, setUnit] = useState<"base" | "pack">(current?.quoted?.unit ?? "base");
-  const [taxIncluded, setTaxIncluded] = useState(current?.quoted?.taxIncluded ?? false);
+  const [taxIncluded, setTaxIncluded] = useState(current?.quoted?.taxIncluded ?? c.priceBasis === "included");
   const [from, setFrom] = useState(addDays(DEMO_TODAY, 1));
   const [note, setNote] = useState("");
   const n = Math.round(Number(amount));

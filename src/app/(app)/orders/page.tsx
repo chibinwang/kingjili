@@ -8,7 +8,8 @@ import { OrderForm, PasteOrderForm } from "@/components/forms/OrderForm";
 import { Badge, Button, Card, CardHeader, Drawer, Empty, Input, Money, PageHeader, Segmented, Select, Truth } from "@/components/ui";
 import { cancelOrder, draftFromLine, resolveDraftIssue, updateDraftLine, validateOrder } from "@/lib/actions";
 import { cn } from "@/lib/cn";
-import { displayQty, ORDER_STATE_LABEL, orderTotals } from "@/lib/domain/orders";
+import { displayQty, lineTaxInput, ORDER_STATE_LABEL, orderTotals } from "@/lib/domain/orders";
+import { BASIS_LABEL } from "@/lib/domain/taxcalc";
 import { agreementOn, PRICE_TIER_LABEL } from "@/lib/domain/pricing";
 import type { OrderState, SalesOrder } from "@/lib/domain/types";
 import { formatTWD } from "@/lib/money";
@@ -290,7 +291,8 @@ function DraftCard({ order }: { order: SalesOrder }) {
                       </Select>
                     </td>
                     <td className="r">
-                      <Money cents={l.qtyBase * l.unitPriceExTaxCents} />
+                      <Money cents={lineTaxInput(l).qty * lineTaxInput(l).unitPriceCents} />
+                      {l.priceBasis === "included" && <div className="text-[11px] text-faint">含稅</div>}
                     </td>
                   </tr>
                 );
@@ -344,7 +346,7 @@ function OrderDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const t = orderTotals(o);
   const d = db.deliveries.find((x) => x.orderId === o.id);
   const ar = db.arDocs.find((x) => x.sourceOrderId === o.id);
-  const contractLines = o.lines.filter((l) => agreementOn(db.customerPrices, o.customerId, l.productId, o.deliveryDate)?.priceExTaxCents === l.unitPriceExTaxCents).length;
+  const contractLines = o.lines.filter((l) => agreementOn(db.customerPrices, o.customerId, l.productId, o.deliveryDate)).length;
   const steps: OrderState[] = ["Draft", "Validated", "Reserved", "Picking", "Shipped", "Delivered", "Closed"];
   const at = steps.indexOf(o.state);
   return (
@@ -398,7 +400,7 @@ function OrderDrawer({ id, onClose }: { id: string; onClose: () => void }) {
           <tr>
             <th>品項</th>
             <th className="r">數量</th>
-            <th className="r">單價（未稅）</th>
+            <th className="r">單價</th>
             <th className="r">小計</th>
           </tr>
         </thead>
@@ -419,11 +421,13 @@ function OrderDrawer({ id, onClose }: { id: string; onClose: () => void }) {
                   {l.unit === "pack" && <div className="text-[11px] text-faint">= {l.qtyBase} {p.baseUnit}</div>}
                 </td>
                 <td className="r">
-                  <Money cents={l.unitPriceExTaxCents} />
-                  <div className="text-[11px] text-faint">/ {p.baseUnit}</div>
+                  <Money cents={lineTaxInput(l).unitPriceCents} />
+                  <div className="text-[11px] text-faint">
+                    {l.priceBasis === "included" ? "含稅" : "未稅"} / {p.baseUnit}
+                  </div>
                 </td>
                 <td className="r">
-                  <Money cents={l.qtyBase * l.unitPriceExTaxCents} />
+                  <Money cents={lineTaxInput(l).qty * lineTaxInput(l).unitPriceCents} />
                 </td>
               </tr>
             );
@@ -432,7 +436,7 @@ function OrderDrawer({ id, onClose }: { id: string; onClose: () => void }) {
       </table>
       <div className="mt-4 ml-auto w-[240px] space-y-1 text-[13px]">
         <div className="flex justify-between text-muted">
-          <span>未稅</span>
+          <span>銷售額（未稅）・{BASIS_LABEL[t.basis]}</span>
           <Money cents={t.exTax} />
         </div>
         <div className="flex justify-between text-muted">

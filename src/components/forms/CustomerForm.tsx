@@ -47,6 +47,7 @@ export function CustomerForm({ onClose, onCreated }: { onClose: () => void; onCr
     sameDaySharePct: 50,
     creditLimit: DEFAULT_CREDIT.daily,
     priceTier: "standard",
+    priceBasis: "excluded",
     invoiceClass: "B2C",
     taxId: "",
     carrierType: "none",
@@ -197,6 +198,16 @@ export function CustomerForm({ onClose, onCreated }: { onClose: () => void; onCr
                 <option value="volume">量販價</option>
                 <option value="vip">VIP 價</option>
               </Select>
+            </Field>
+            <Field group label="報價方式" hint="個別品項可在合約價另設（混合）">
+              <Segmented
+                value={v.priceBasis ?? "excluded"}
+                onChange={(b) => set("priceBasis", b)}
+                options={[
+                  { value: "excluded", label: "未稅報價" },
+                  { value: "included", label: "含稅報價" },
+                ]}
+              />
             </Field>
             <Field group label="發票" required className="col-span-2">
               <Segmented

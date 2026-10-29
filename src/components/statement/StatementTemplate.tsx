@@ -248,7 +248,7 @@ export function StatementTemplate({ doc, period, changed, editable, onChange }: 
                       </ul>
                     )}
                   </td>
-                  {doc.showInvoice && <td className="num text-ink-2">{l.invoiceNo ?? (l.kind === "charge" ? <span className="text-faint">月底彙開</span> : "")}</td>}
+                  {doc.showInvoice && <td className="num text-ink-2">{l.invoiceNo ?? (l.kind === "charge" ? <span className="text-faint">未開立</span> : "")}</td>}
                   <td className="num text-right">
                     {l.debitCents || editable ? <Ed value={l.debitCents ? money(l.debitCents) : ""} label={`第 ${i + 1} 筆應收`} className="inline-block min-w-[3ch]" changed={isNew || isChanged(`${k}:debitCents`)} onCommit={amount((c) => setLine(l.key, { debitCents: c }), `第 ${i + 1} 筆應收`)} /> : null}
                   </td>

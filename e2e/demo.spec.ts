@@ -449,3 +449,24 @@ test("route map shows the real Taichung base map with every stop and the depot",
   await expect(map.locator(".map-stop.is-selected")).toContainText("三味食堂");
   await page.screenshot({ path: `${SHOTS}/route-map.png` });
 });
+
+test("單趟開立: each delivery prints a 證明聯 with the 交易明細 in the client's format", async ({ page }) => {
+  await fresh(page, "/print/invoice?id=inv-2026-10-20-SW02");
+  const slip = page.getByTestId("invoice-slip");
+  await expect(slip.getByText("電子發票證明聯")).toBeVisible();
+  await expect(slip.getByText("115年09-10月")).toBeVisible();
+  await expect(slip.getByText("交易明細")).toBeVisible();
+  await expect(slip.getByText("買受人統編 00001113")).toBeVisible();
+  await expect(slip.getByText("銷售額(應稅) $3,442")).toBeVisible();
+  await expect(slip.getByText("稅額 $172")).toBeVisible();
+  await expect(slip.getByText("總計 $3,614")).toBeVisible();
+  await page.screenshot({ path: `${SHOTS}/invoice-slip.png`, fullPage: true });
+});
+
+test("報價方式 can be switched per customer and shows 混合 when 合約價 differ", async ({ page }) => {
+  await fresh(page, "/customers?tab=crm&open=C02");
+  const basis = page.getByTestId("price-basis");
+  await expect(basis.getByText(/混合/)).toBeVisible();
+  await basis.getByRole("tab", { name: "含稅報價" }).click();
+  await expect(page.getByText("三味食堂 改為含稅報價")).toBeVisible();
+});

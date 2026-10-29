@@ -1,4 +1,7 @@
 import type { Cents } from "../money";
+import type { DocBasis, PriceBasis } from "./taxcalc";
+
+export type { DocBasis, PriceBasis };
 
 /** Canonical demo data model — follows PRD §6, with small, documented extensions. */
 
@@ -54,6 +57,8 @@ export interface Customer {
   carrier?: { type: "mobile" | "citizen" | "member"; value: string };
   billingContact: string;
   priceTier: PriceTier;
+  /** 報價方式: whether this customer is quoted tax-included or tax-excluded prices. A 合約價 row can override per product (→ 混合). Missing = excluded. */
+  priceBasis?: PriceBasis;
   geo: GeoPoint;
   /** Map position was estimated from the district and still needs confirming. */
   geoPending?: boolean;
@@ -145,8 +150,13 @@ export interface OrderLine {
   unit: "base" | "pack";
   /** Quantity in base units — the only quantity used for stock & money. */
   qtyBase: number;
+  /** Ex-tax unit price per base unit. For tax-included lines this is derived (rounded to the cent) and used for analytics only. */
   unitPriceExTaxCents: Cents;
   taxRateBp: number;
+  /** Basis the price was quoted in. Missing = excluded. */
+  priceBasis?: PriceBasis;
+  /** Tax-included unit price per base unit — the figure that counts when priceBasis is "included". */
+  unitPriceInclTaxCents?: Cents;
   note?: string;
 }
 
@@ -230,7 +240,13 @@ export interface ArLineItem {
   qty: number;
   unitLabel: string;
   unitPriceExTaxCents: Cents;
+  /** Ex-tax share of the document's sales amount; lines add up to the document exactly (尾差調整). */
   exTaxCents: Cents;
+  /** Basis and amount as quoted — what the tax is recomputed from. Missing on older documents (= excluded). */
+  priceBasis?: PriceBasis;
+  amountCents?: Cents;
+  /** Tax-included unit price per unit shown (when priceBasis is "included"). */
+  unitPriceInclTaxCents?: Cents;
 }
 
 export interface ArDocument {
@@ -246,6 +262,7 @@ export interface ArDocument {
   totalCents: Cents;
   memo?: string;
   items?: ArLineItem[];
+  priceBasis?: DocBasis;
   /** Set when a reversal/credit fully offsets it; documents are never deleted. */
   voidedBy?: string;
   /** A correction document points at the document it corrects (e.g. tax correction). */
@@ -353,6 +370,47 @@ export interface TaxInvoice {
   rejectReason?: string;
   allowanceCents?: Cents;
   createdAt: string;
+  /** 單趟開立 (one per delivery) or the older 月結彙開. */
+  source?: "per_delivery" | "monthly";
+  priceBasis?: DocBasis;
+  /** MIG 4.0 品項明細. Decimal fields are strings with up to 7 decimals (no floats). */
+  lines?: InvoiceLine[];
+  /** Issue time (開立時間) — the upload deadline counts from the next day. */
+  issuedAt?: string;
+  /** 4-digit 隨機碼 printed on the 證明聯. */
+  randomNumber?: string;
+  /** Last day to upload to 財政部 (B2B 7 days, B2C 2 days after the issue day). */
+  uploadDueOn?: string;
+}
+
+export interface InvoiceLine {
+  seq: number;
+  productId: string;
+  description: string;
+  qty: number;
+  unit: string;
+  basis: PriceBasis;
+  /** Quoted unit price and amount in the line's basis, integer cents. */
+  unitPriceCents: Cents;
+  amountCents: Cents;
+  /** Ex-tax unit price and amount, decimal strings with up to 7 decimals ("361.9047619"). */
+  unitPriceEx: string;
+  amountEx: string;
+  /** 課稅別: TX 應稅 (all current products), TZ 零稅率, TF 免稅. */
+  taxType: "TX" | "TZ" | "TF";
+}
+
+/** 字軌號段 allocated by 財政部 for one bimonthly period. */
+export interface InvoiceNumberRange {
+  id: string;
+  /** Bimonthly period as "YYYY-MM" of its first month (e.g. 2026-09 = 115年 09–10月). */
+  period: string;
+  track: string;
+  start: number;
+  end: number;
+  /** Next number to issue; > end means exhausted. */
+  next: number;
+  status: "active" | "closed";
 }
 
 export interface Supplier {

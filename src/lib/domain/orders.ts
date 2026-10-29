@@ -1,5 +1,6 @@
-import { DEFAULT_TAX_POLICY, lineAmount, sum, taxOnExclusive, type TaxPolicy } from "../money";
-import type { OrderLine, OrderState, Product, SalesOrder } from "./types";
+import { DEFAULT_TAX_POLICY, type Cents, type TaxPolicy } from "../money";
+import { allocateExTax, taxDocument, type DocBasis, type TaxLineInput } from "./taxcalc";
+import type { ArLineItem, OrderLine, OrderState, Product, SalesOrder } from "./types";
 
 /** Allowed order state transitions (PRD Flow B). Anything else is rejected. */
 export const ORDER_TRANSITIONS: Record<OrderState, OrderState[]> = {
@@ -52,10 +53,45 @@ export function displayQty(line: OrderLine, product: Product): { qty: number; un
     : { qty: line.qtyBase, unit: product.baseUnit };
 }
 
+/** A line as the tax engine sees it: base-unit quantity × the unit price in the basis it was quoted. */
+export function lineTaxInput(l: OrderLine): TaxLineInput {
+  const basis = l.priceBasis ?? "excluded";
+  return { basis, qty: l.qtyBase, unitPriceCents: basis === "included" ? l.unitPriceInclTaxCents! : l.unitPriceExTaxCents };
+}
+
+export function linesTotals(lines: OrderLine[], policy: TaxPolicy = DEFAULT_TAX_POLICY): { exTax: Cents; tax: Cents; total: Cents; basis: DocBasis } {
+  const d = taxDocument(lines.map(lineTaxInput), policy);
+  return { exTax: d.salesCents, tax: d.taxCents, total: d.totalCents, basis: d.basis };
+}
+
 export function orderTotals(order: SalesOrder, policy: TaxPolicy = DEFAULT_TAX_POLICY) {
-  const exTax = sum(order.lines.map((l) => lineAmount(l.qtyBase, l.unitPriceExTaxCents)));
-  const tax = taxOnExclusive(exTax, policy);
-  return { exTax, tax, total: exTax + tax };
+  return linesTotals(order.lines, policy);
+}
+
+/** Amounts and items of the receivable created on delivery, from the delivered lines. Item ex-tax shares add up to the sales amount. */
+export function buildCharge(lines: OrderLine[], products: Map<string, Product>, policy: TaxPolicy = DEFAULT_TAX_POLICY): { exTaxCents: Cents; taxCents: Cents; totalCents: Cents; priceBasis: DocBasis; items: ArLineItem[] } {
+  const d = taxDocument(lines.map(lineTaxInput), policy);
+  const shares = allocateExTax(d.lines, d.salesCents);
+  return {
+    exTaxCents: d.salesCents,
+    taxCents: d.taxCents,
+    totalCents: d.totalCents,
+    priceBasis: d.basis,
+    items: lines.map((l, i) => {
+      const p = products.get(l.productId)!;
+      return {
+        productId: p.id,
+        name: p.name,
+        qty: l.qty,
+        unitLabel: unitLabel(p, l.unit),
+        unitPriceExTaxCents: l.unitPriceExTaxCents,
+        exTaxCents: shares[i],
+        priceBasis: d.lines[i].basis,
+        amountCents: d.lines[i].amountCents,
+        unitPriceInclTaxCents: l.unitPriceInclTaxCents,
+      };
+    }),
+  };
 }
 
 /** Deterministic duplicate check: same source + external id is the same order (idempotent ingestion). */

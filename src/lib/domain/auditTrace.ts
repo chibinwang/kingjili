@@ -2,6 +2,7 @@ import { formatTWD } from "../money";
 import { periodRange } from "../time";
 import { TERMS_LABEL } from "./ar";
 import type { AuditInput, CheckId, CheckResult } from "./audit";
+import { PER_TRIP_FROM } from "./invoices";
 import { buildStatement } from "./statements";
 
 /**
@@ -94,13 +95,13 @@ export function buildAuditTrace(input: AuditInput, results: CheckResult[]): Audi
           step = line(`期末 ${f(t.closingCents)}，非溢收`, 1);
           break;
         case "tax_mismatch":
-          step = d.docs.length ? line(`${d.docs.length} 張單據稅額 ＝ 未稅 × 5%`, d.docs.length) : line("本期無單據", 0, "skip");
+          step = d.docs.length ? line(`${d.docs.length} 張單據稅額依報價方式（含稅／未稅）核算相符`, d.docs.length) : line("本期無單據", 0, "skip");
           break;
         case "cancelled_order_charged":
           step = d.orders.length ? line(`${d.orders.length} 筆訂單，無取消後仍請款`, d.orders.length) : line("本期無訂單", 0, "skip");
           break;
         case "missing_invoice":
-          step = c.settlementTerms === "daily" ? line(`${d.charges.length} 張出貨皆已開立發票`, d.charges.length) : line(`${TERMS_LABEL[c.settlementTerms]}客戶月底彙開，略過`, 0, "skip");
+          step = c.settlementTerms === "daily" || end >= PER_TRIP_FROM ? line(`${d.charges.length} 張出貨皆已單趟開立發票`, d.charges.length) : line(`${TERMS_LABEL[c.settlementTerms]}客戶當時為月底彙開，略過`, 0, "skip");
           break;
         case "invoice_state":
           step = d.invs.length ? line(`${d.invs.length} 張發票狀態正常`, d.invs.length) : line("本期無發票", 0, "skip");

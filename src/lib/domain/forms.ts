@@ -39,6 +39,8 @@ export const customerSchema = z
     sameDaySharePct: z.number().int().min(1, "需介於 1–99%").max(99, "需介於 1–99%"),
     creditLimit: z.number().int("信用額度需為整數").min(0, "信用額度不可為負").max(5_000_000),
     priceTier: z.enum(["standard", "volume", "vip"]),
+    /** 報價方式 */
+    priceBasis: z.enum(["excluded", "included"]).default("excluded"),
     invoiceClass: z.enum(["B2B", "B2C"]),
     taxId: z.string().trim(),
     carrierType: z.enum(["none", "mobile", "member", "citizen"]),
