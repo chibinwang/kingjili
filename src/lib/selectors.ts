@@ -1,5 +1,6 @@
 import { customerAr, DOC_SIGN } from "./domain/ar";
 import { runMonthEndAudit } from "./domain/audit";
+import { dayCollections } from "./domain/collections";
 import { buildCrmRow } from "./domain/crm";
 import { stockPosition, type StockPosition } from "./domain/inventory";
 import { buildPickLines, type PickLine } from "./domain/picking";
@@ -139,3 +140,20 @@ export const crmRows = memo((db) => {
 
 /** 合約價 in effect today, per customer. */
 export const agreedPrices = memo((db): Map<string, AgreementSummary> => new Map(db.customers.map((c) => [c.id, agreementSummary(db.customerPrices ?? [], c, db.products, DEMO_TODAY)])));
+
+/** Today's collections for one vehicle ("all" = both): per stop and totals. Drives the driver screen and the overview. */
+export const collectionsFor = memoArg((db, vehicle: "A" | "B" | "all") => {
+  const plan = activePlan(db);
+  const m = maps(db);
+  const stops = (plan?.stops ?? []).filter((s) => vehicle === "all" || s.vehicleId === vehicle).sort((a, b) => a.vehicleId.localeCompare(b.vehicleId) || a.sequence - b.sequence);
+  return dayCollections({
+    stops,
+    deliveries: new Map(db.deliveries.map((d) => [d.id, d])),
+    orders: m.orders,
+    customers: m.customers,
+    arDocs: db.arDocs,
+    payments: db.payments,
+    picks: db.pickConfirmations,
+    balances: new Map(arSummary(db).rows.map((r) => [r.customerId, r.balance])),
+  });
+});

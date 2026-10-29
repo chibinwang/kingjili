@@ -2,6 +2,7 @@ import { appliedFrom, isReversed, paymentUnapplied, planAllocation, planReversal
 import type { AiTask } from "./domain/ai";
 import { releaseReservations, reserveOrder } from "./domain/inventory";
 import { preflightInvoice } from "./domain/invoices";
+import { billableLines, linesTotal } from "./domain/collections";
 import { quoteToBaseExTax, resolvePrice } from "./domain/pricing";
 import { parseLineOrder } from "./domain/lineParser";
 import { canTransition, findDuplicate, findLikelyDuplicate, orderTotals, toBaseQty, unitLabel } from "./domain/orders";
@@ -417,7 +418,9 @@ export function completeDelivery(db: Db, ctx: ActCtx, deliveryId: string, collec
   tx.patch("orders", order.id, { state: "Delivered" });
   tx.patch("deliveries", d.id, { status: "delivered", deliveredAt: ctx.now });
   const customer = db.customers.find((c) => c.id === d.customerId)!;
-  const t = orderTotals(order);
+  // bill what was delivered: a confirmed short pick lowers the quantity on the charge
+  const delivered = billableLines(order, db.pickConfirmations);
+  const t = linesTotal(delivered);
   const docId = `ar-${d.date}-${customer.code}`;
   const doc: ArDocument = {
     id: docId,
@@ -431,7 +434,7 @@ export function completeDelivery(db: Db, ctx: ActCtx, deliveryId: string, collec
     taxCents: t.tax,
     totalCents: t.total,
     memo: `送貨單 ${d.noteNo}`,
-    items: order.lines.map((l) => {
+    items: delivered.map((l) => {
       const p = db.products.find((x) => x.id === l.productId)!;
       return { productId: p.id, name: p.name, qty: l.qty, unitLabel: unitLabel(p, l.unit), unitPriceExTaxCents: l.unitPriceExTaxCents, exTaxCents: lineAmount(l.qtyBase, l.unitPriceExTaxCents) };
     }),
