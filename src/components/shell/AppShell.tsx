@@ -8,8 +8,8 @@ import {
   LayoutDashboard,
   Menu,
   PackagePlus,
-  PanelLeftClose,
-  PanelLeftOpen,
+  ChevronLeft,
+  ChevronRight,
   Receipt,
   Search,
   Settings,
@@ -125,8 +125,15 @@ function CollapseToggle({ collapsed }: { collapsed: boolean }) {
   const setNavCollapsed = useStore((s) => s.setNavCollapsed);
   const label = collapsed ? "展開側邊欄" : "收合側邊欄";
   return (
-    <button onClick={() => setNavCollapsed(!collapsed)} aria-label={label} title={label} aria-expanded={!collapsed} className="grid h-8 w-8 shrink-0 place-items-center rounded-[9px] text-faint hover:bg-black/[.05] hover:text-ink-2">
-      {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+    <button
+      onClick={() => setNavCollapsed(!collapsed)}
+      aria-label={label}
+      title={label}
+      aria-expanded={!collapsed}
+      className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-line bg-surface text-ink-2 shadow-[var(--shadow-card)] transition-colors hover:border-amber hover:text-amber-deep focus-visible:border-amber focus-visible:outline-none"
+    >
+      {/* one plain arrow: points the way the sidebar will move */}
+      {collapsed ? <ChevronRight size={15} strokeWidth={2.4} /> : <ChevronLeft size={15} strokeWidth={2.4} />}
     </button>
   );
 }
