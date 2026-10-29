@@ -1,3 +1,5 @@
+// NOTE: the only direct model call in the codebase. When the AI gateway in docs/AI_COMPUTE_SWITCH.md is built,
+// move this behind ai.run("insights.report", …) and remove the SDK import here — no other file may call a model directly.
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { INSIGHTS_SYSTEM_PROMPT, insightsUserMessage } from "@/lib/insights/prompt";
