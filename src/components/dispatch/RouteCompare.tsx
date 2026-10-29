@@ -104,7 +104,7 @@ export function RouteCompare({ onClose }: { onClose: () => void }) {
         <VehicleTag v={s.to} />
         <span className="text-ink-2">第 {s.position} 站</span>
         <span className="text-muted">
-          ・與 {m.customers.get(s.nearestNeighbor?.customerId ?? "")?.name} 相距約 {s.nearestNeighbor?.km.toFixed(1)} km；原本 {s.from} 車需跨河折返西區
+          ・與 {m.customers.get(s.nearestNeighbor?.customerId ?? "")?.name} 相距約 {s.nearestNeighbor?.km.toFixed(1)} km；原本 {s.from} 車需繞到 {s.to} 車的服務區再折返
         </span>
       </div>
 

@@ -27,7 +27,7 @@ import { addDays, at, DEMO_TODAY, dayOfWeek, periodOf, periodRange } from "../ti
 import type { Db } from "../db";
 import { AGENT, AGREED_PRICES, CRM_NOTES, CUSTOMERS, PRODUCTS, SUPPLIERS, TODAY_ORDERS, TODAY_SEQUENCE, USERS, VEHICLES_SEED, type CustomerSeed } from "./catalog";
 
-export const SEED_VERSION = 7;
+export const SEED_VERSION = 8;
 
 function mulberry32(seed: number) {
   let a = seed;

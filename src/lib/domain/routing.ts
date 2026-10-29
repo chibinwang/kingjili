@@ -3,12 +3,12 @@ import { orderVolumeL, orderWeightKg } from "./orders";
 import type { Customer, GeoPoint, Product, RouteStop, SalesOrder, Vehicle, VehicleId } from "./types";
 
 /**
- * Illustrative routing on a schematic map. Distances are straight-line × road factor,
+ * Illustrative routing over real coordinates. Distances are great-circle × road factor,
  * NOT a routing engine or live traffic. Used only to compare before/after assignments.
  */
 export const ROUTING = {
-  depot: { x: 500, y: 600 } as GeoPoint,
-  kmPerUnit: 0.032,
+  /** 金吉利冷凍倉 — placeholder near the 南區／大里 border until the real address is confirmed. */
+  depot: { lat: 24.0905, lng: 120.6795 } as GeoPoint,
   roadFactor: 1.35,
   speedKmh: 28,
   serviceMin: 12,
@@ -18,7 +18,16 @@ export const ROUTING = {
 };
 
 export function distanceKm(a: GeoPoint, b: GeoPoint): number {
-  return Math.hypot(a.x - b.x, a.y - b.y) * ROUTING.kmPerUnit * ROUTING.roadFactor;
+  return haversineKm(a, b) * ROUTING.roadFactor;
+}
+
+/** Straight-line (great-circle) distance in km. */
+export function haversineKm(a: GeoPoint, b: GeoPoint): number {
+  const rad = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * rad;
+  const dLng = (b.lng - a.lng) * rad;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.sqrt(h));
 }
 
 export interface StopEta {

@@ -437,3 +437,15 @@ test("people without margin access never see cost or margin in the overview or t
   await expect(card).not.toContainText("毛利");
   await expect(card).not.toContainText("成本");
 });
+
+test("route map shows the real Taichung base map with every stop and the depot", async ({ page }) => {
+  await fresh(page, "/dispatch");
+  const map = page.getByTestId("route-map");
+  await expect(map.locator(".map-stop")).toHaveCount(12);
+  await expect(map.locator(".map-depot")).toHaveCount(1);
+  await expect(map.locator(".map-stop.is-late")).toHaveCount(1);
+  await expect(map.locator(".leaflet-tile-loaded").first()).toBeVisible({ timeout: 15_000 });
+  await map.locator(".map-stop", { hasText: "三味食堂" }).locator(".map-pin").click();
+  await expect(map.locator(".map-stop.is-selected")).toContainText("三味食堂");
+  await page.screenshot({ path: `${SHOTS}/route-map.png` });
+});

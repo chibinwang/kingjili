@@ -155,11 +155,29 @@ export function findSupplierDuplicates(suppliers: Supplier[], name: string): Sup
   return suppliers.filter((s) => s.name === name.trim());
 }
 
-/** Schematic map position for a new customer: the centre of known customers in that district. Flagged for confirmation. */
+/** Approximate centres of Taichung districts (WGS84), used to place a new customer until the address is geocoded. */
+export const TAICHUNG_DISTRICTS: Record<string, GeoPoint> = {
+  中區: { lat: 24.1428, lng: 120.6806 },
+  東區: { lat: 24.1367, lng: 120.6997 },
+  南區: { lat: 24.1203, lng: 120.6655 },
+  西區: { lat: 24.1435, lng: 120.6633 },
+  北區: { lat: 24.1608, lng: 120.6834 },
+  西屯區: { lat: 24.1824, lng: 120.6362 },
+  南屯區: { lat: 24.1385, lng: 120.6326 },
+  北屯區: { lat: 24.1823, lng: 120.7068 },
+  大里區: { lat: 24.0990, lng: 120.6786 },
+  太平區: { lat: 24.1263, lng: 120.7187 },
+  烏日區: { lat: 24.1046, lng: 120.6243 },
+  大雅區: { lat: 24.2290, lng: 120.6478 },
+  潭子區: { lat: 24.2120, lng: 120.7054 },
+};
+
+/** Map position for a new customer: the centre of known customers in that district, else the district centre. Flagged for confirmation. */
 export function districtCentre(customers: Customer[], district: string, fallback: GeoPoint): GeoPoint {
   const pts = customers.filter((c) => c.district === district).map((c) => c.geo);
-  if (!pts.length) return fallback;
-  return { x: Math.round(pts.reduce((a, p) => a + p.x, 0) / pts.length), y: Math.round(pts.reduce((a, p) => a + p.y, 0) / pts.length) };
+  if (!pts.length) return TAICHUNG_DISTRICTS[district] ?? fallback;
+  const avg = (k: "lat" | "lng") => Math.round((pts.reduce((a, p) => a + p[k], 0) / pts.length) * 1e5) / 1e5;
+  return { lat: avg("lat"), lng: avg("lng") };
 }
 
 export const DEFAULT_CREDIT: Record<Customer["settlementTerms"], number> = { daily: 30000, monthly: 60000, mixed: 60000 };

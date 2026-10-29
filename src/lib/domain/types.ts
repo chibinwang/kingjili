@@ -21,9 +21,9 @@ export type SettlementTerms = "daily" | "monthly" | "mixed";
 export type PriceTier = "standard" | "volume" | "vip";
 
 export interface GeoPoint {
-  /** Schematic map coordinates (SVG units), not GPS. */
-  x: number;
-  y: number;
+  /** WGS84 latitude / longitude. Demo customers sit on plausible Taichung streets, not real shops. */
+  lat: number;
+  lng: number;
 }
 
 export type CustomerSegment = "餐廳" | "炸物店";

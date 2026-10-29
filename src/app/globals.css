@@ -154,3 +154,25 @@ body {
     break-after: auto;
   }
 }
+
+/* ── route map (Leaflet) ── */
+/* calm the full-colour OSM style so the routes stay the loudest thing on the map */
+.map-tiles { filter: grayscale(0.55) contrast(0.92) brightness(1.04); }
+.leaflet-container { font-family: var(--font-sans); background: #eef0ec; }
+.leaflet-control-attribution { font-size: 10px; }
+.map-stop, .map-depot { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; align-items: center; transform: translate(-50%, -100%); white-space: nowrap; }
+.map-pin { display: grid; place-items: center; min-width: 30px; height: 26px; padding: 0 5px; border-radius: 13px 13px 13px 3px; color: #fff; font: 800 11.5px/1 var(--font-sans); border: 2px solid #fff; box-shadow: 0 1px 4px rgba(27, 36, 48, 0.35); cursor: pointer; }
+.map-stop-A .map-pin { background: var(--color-truck-a); }
+.map-stop-B .map-pin { background: var(--color-truck-b); }
+.map-label { margin-top: 3px; padding: 1px 6px; border-radius: 6px; background: #fff; border: 1px solid var(--color-line); color: var(--color-ink); font: 500 11.5px/1.5 var(--font-sans); box-shadow: 0 1px 2px rgba(27, 36, 48, 0.08); }
+.map-stop.is-highlight .map-pin { box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-amber) 30%, transparent), 0 1px 4px rgba(27, 36, 48, 0.35); }
+.map-stop.is-highlight .map-label, .map-stop.is-selected .map-label { font-weight: 700; border-color: var(--color-ink-2); }
+.map-stop.is-selected .map-pin { border-width: 3px; }
+.map-stop.is-late .map-pin { outline: 2px dashed var(--color-bad); outline-offset: 3px; }
+.map-stop.is-dim { opacity: 0.25; }
+.map-depot span { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: var(--color-ink); color: var(--color-amber); font: 700 13px/1 var(--font-sans); border: 2px solid #fff; box-shadow: 0 1px 4px rgba(27, 36, 48, 0.35); }
+.map-depot b { margin-top: 3px; padding: 1px 6px; border-radius: 6px; background: var(--color-ink); color: #fff; font: 600 11px/1.5 var(--font-sans); }
+.map-depot { transform: translate(-50%, -15px); }
+.map-compact .map-label { display: none; }
+.map-compact .map-stop.is-highlight .map-label, .map-compact .map-stop.is-selected .map-label { display: block; }
+.map-compact .map-depot b { display: none; }

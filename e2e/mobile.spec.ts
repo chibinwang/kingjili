@@ -31,3 +31,12 @@ test("overview business summary fits a phone", async ({ page }) => {
   await expect(page.getByTestId("revenue-profit-chart")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(await page.evaluate(() => window.innerWidth));
 });
+
+test("route map fits a phone", async ({ page }) => {
+  await page.goto("/dispatch");
+  await page.evaluate(() => localStorage.clear());
+  await page.goto("/dispatch");
+  await expect(page.getByTestId("route-map").locator(".map-stop")).toHaveCount(12);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(await page.evaluate(() => window.innerWidth));
+  await page.screenshot({ path: "test-results/screens/mobile-route-map.png" });
+});
