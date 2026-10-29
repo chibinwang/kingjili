@@ -61,6 +61,24 @@ export interface Customer {
   creditLimitCents: Cents;
 }
 
+/**
+ * 合約價 — the price a customer was promised for one product, effective from a date.
+ * Rows are never edited: a change is a new row with a later effectiveFrom; null price = back to the tier price.
+ */
+export interface CustomerPrice {
+  id: string;
+  customerId: string;
+  productId: string;
+  effectiveFrom: string;
+  /** Ex-tax price per base unit (包／袋) — the only figure used for order lines. Null ends the agreement. */
+  priceExTaxCents: Cents | null;
+  /** The price as it was quoted to the customer, kept for display and audit. */
+  quoted?: { amountCents: Cents; unit: "base" | "pack"; taxIncluded: boolean };
+  note?: string;
+  createdAt: string;
+  createdBy: string;
+}
+
 export type ProductCategory = "冷凍炸物" | "蔬食" | "調理品";
 
 export interface Product {

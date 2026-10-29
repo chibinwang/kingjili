@@ -9,6 +9,7 @@ import { Badge, Button, Card, CardHeader, Drawer, Empty, Input, Money, PageHeade
 import { cancelOrder, draftFromLine, resolveDraftIssue, updateDraftLine, validateOrder } from "@/lib/actions";
 import { cn } from "@/lib/cn";
 import { displayQty, ORDER_STATE_LABEL, orderTotals } from "@/lib/domain/orders";
+import { agreementOn, PRICE_TIER_LABEL } from "@/lib/domain/pricing";
 import type { OrderState, SalesOrder } from "@/lib/domain/types";
 import { formatTWD } from "@/lib/money";
 import { maps } from "@/lib/selectors";
@@ -343,6 +344,7 @@ function OrderDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const t = orderTotals(o);
   const d = db.deliveries.find((x) => x.orderId === o.id);
   const ar = db.arDocs.find((x) => x.sourceOrderId === o.id);
+  const contractLines = o.lines.filter((l) => agreementOn(db.customerPrices, o.customerId, l.productId, o.deliveryDate)?.priceExTaxCents === l.unitPriceExTaxCents).length;
   const steps: OrderState[] = ["Draft", "Validated", "Reserved", "Picking", "Shipped", "Delivered", "Closed"];
   const at = steps.indexOf(o.state);
   return (
@@ -380,8 +382,11 @@ function OrderDrawer({ id, onClose }: { id: string; onClose: () => void }) {
         <dd className="num">{o.externalId}</dd>
         <dt className="text-muted">下單時間</dt>
         <dd className="num">{formatDateTime(o.orderAt)}</dd>
-        <dt className="text-muted">客戶價格等級</dt>
-        <dd>{c?.priceTier === "vip" ? "VIP 價" : c?.priceTier === "volume" ? "量販價" : "標準價"}</dd>
+        <dt className="text-muted">價格依據</dt>
+        <dd>
+          {c ? PRICE_TIER_LABEL[c.priceTier] : "—"}
+          {contractLines > 0 && <span className="text-amber-deep">・合約價 {contractLines} 項</span>}
+        </dd>
         <dt className="text-muted">送貨單</dt>
         <dd className="num">{d ? `${d.noteNo}（${d.vehicleId} 車）` : "—"}</dd>
         <dt className="text-muted">應收文件</dt>

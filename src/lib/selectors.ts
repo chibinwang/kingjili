@@ -3,6 +3,7 @@ import { runMonthEndAudit } from "./domain/audit";
 import { buildCrmRow } from "./domain/crm";
 import { stockPosition, type StockPosition } from "./domain/inventory";
 import { buildPickLines, type PickLine } from "./domain/picking";
+import { agreementSummary, type AgreementSummary } from "./domain/pricing";
 import { evaluatePlan, suggestReassignment } from "./domain/routing";
 import { activePlan, routingContext } from "./actions";
 import type { Db } from "./db";
@@ -135,3 +136,6 @@ export const crmRows = memo((db) => {
   const ar = new Map(arSummary(db).rows.map((r) => [r.customerId, r]));
   return db.customers.map((c) => buildCrmRow(c, { docs: db.arDocs, orders: db.orders, notes: db.crmNotes, balance: ar.get(c.id)!.balance, overdue: ar.get(c.id)!.overdue, today: DEMO_TODAY }));
 });
+
+/** 合約價 in effect today, per customer. */
+export const agreedPrices = memo((db): Map<string, AgreementSummary> => new Map(db.customers.map((c) => [c.id, agreementSummary(db.customerPrices ?? [], c, db.products, DEMO_TODAY)])));

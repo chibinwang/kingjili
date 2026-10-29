@@ -1,5 +1,5 @@
-import { DEFAULT_TAX_POLICY, lineAmount, sum, taxOnExclusive, type Cents, type TaxPolicy } from "../money";
-import type { Customer, OrderLine, OrderState, Product, SalesOrder } from "./types";
+import { DEFAULT_TAX_POLICY, lineAmount, sum, taxOnExclusive, type TaxPolicy } from "../money";
+import type { OrderLine, OrderState, Product, SalesOrder } from "./types";
 
 /** Allowed order state transitions (PRD Flow B). Anything else is rejected. */
 export const ORDER_TRANSITIONS: Record<OrderState, OrderState[]> = {
@@ -36,10 +36,6 @@ export const ORDER_STATE_LABEL: Record<OrderState, string> = {
   Cancelled: "已取消",
   Returned: "退貨",
 };
-
-export function unitPriceFor(product: Product, customer: Customer): Cents {
-  return product.price[customer.priceTier];
-}
 
 export function toBaseQty(product: Product, qty: number, unit: "base" | "pack"): number {
   return unit === "pack" ? qty * product.packSize : qty;

@@ -2,6 +2,7 @@ import { appliedFrom, isReversed, paymentUnapplied, planAllocation, planReversal
 import type { AiTask } from "./domain/ai";
 import { releaseReservations, reserveOrder } from "./domain/inventory";
 import { preflightInvoice } from "./domain/invoices";
+import { quoteToBaseExTax, resolvePrice } from "./domain/pricing";
 import { parseLineOrder } from "./domain/lineParser";
 import { canTransition, findDuplicate, findLikelyDuplicate, orderTotals, toBaseQty, unitLabel } from "./domain/orders";
 import { bestInsertion, evaluatePlan, ROUTING, type RoutingContext } from "./domain/routing";
@@ -157,6 +158,7 @@ export function draftFromLine(db: Db, ctx: ActCtx, messageId: string, customerHi
   const customer = db.customers.find((c) => c.id === parsed.customerId);
   const n = tx.nextNum(`so-${ymd(today)}`);
   const orderId = `o-line-${msg.id}`;
+  const deliveryDate = addDays(today, parsed.deliveryOffsetDays);
   const lines: OrderLine[] = parsed.lines.map((l, i) => {
     const p = db.products.find((x) => x.id === l.productId)!;
     const unit = l.unit ?? "base";
@@ -167,7 +169,7 @@ export function draftFromLine(db: Db, ctx: ActCtx, messageId: string, customerHi
       qty,
       unit,
       qtyBase: toBaseQty(p, qty, unit),
-      unitPriceExTaxCents: customer ? p.price[customer.priceTier] : p.price.standard,
+      unitPriceExTaxCents: resolvePrice(db.customerPrices, customer, p, deliveryDate).cents,
       taxRateBp: 500,
     };
   });
@@ -178,7 +180,7 @@ export function draftFromLine(db: Db, ctx: ActCtx, messageId: string, customerHi
     source: "LINE",
     externalId: `LINE-${msg.webhookEventId}`,
     orderAt: msg.receivedAt,
-    deliveryDate: addDays(today, parsed.deliveryOffsetDays),
+    deliveryDate,
     state: "Draft",
     lines,
     rawText: msg.text,
@@ -214,7 +216,7 @@ export function updateDraftLine(db: Db, ctx: ActCtx, orderId: string, index: num
     const qty = patch.qty ?? l.qty;
     const unit = patch.unit ?? l.unit;
     if (!Number.isInteger(qty) || qty < 0) throw new ActionError("數量需為正整數");
-    return { ...l, productId, qty, unit, qtyBase: toBaseQty(p, qty, unit), unitPriceExTaxCents: customer ? p.price[customer.priceTier] : p.price.standard };
+    return { ...l, productId, qty, unit, qtyBase: toBaseQty(p, qty, unit), unitPriceExTaxCents: resolvePrice(db.customerPrices, customer, p, o.deliveryDate).cents };
   });
   const issues = (o.issues ?? []).map((iss) =>
     iss.lineIndex === index && ((iss.field === "unit" && patch.unit) || (iss.field === "qty" && patch.qty !== undefined)) ? { ...iss, resolved: true } : iss,
@@ -232,7 +234,7 @@ export function resolveDraftIssue(db: Db, ctx: ActCtx, orderId: string, issueInd
   if (patch?.customerId) {
     const c = db.customers.find((x) => x.id === patch.customerId)!;
     upd.customerId = c.id;
-    upd.lines = o.lines.map((l) => ({ ...l, unitPriceExTaxCents: db.products.find((p) => p.id === l.productId)!.price[c.priceTier] }));
+    upd.lines = o.lines.map((l) => ({ ...l, unitPriceExTaxCents: resolvePrice(db.customerPrices, c, db.products.find((p) => p.id === l.productId)!, o.deliveryDate).cents }));
   }
   tx.patch("orders", orderId, upd);
   return tx.db;
@@ -1002,6 +1004,51 @@ export function addCustomerNote(db: Db, ctx: ActCtx, input: NoteInput): Db {
   return tx.db;
 }
 
+export interface AgreedPriceInput {
+  customerId: string;
+  productId: string;
+  /** null ends the agreement (back to the tier price). */
+  quote: { amountCents: Cents; unit: "base" | "pack"; taxIncluded: boolean } | null;
+  effectiveFrom: string;
+  note?: string;
+}
+
+/** Record a 合約價. Never edits an older row — a new row with a later effectiveFrom supersedes it, so past orders keep their price. */
+export function setAgreedPrice(db: Db, ctx: ActCtx, input: AgreedPriceInput): Db {
+  require(ctx, "price.manage");
+  const tx = new Tx(db, ctx);
+  const c = tx.get("customers", input.customerId);
+  const p = tx.get("products", input.productId);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.effectiveFrom)) throw new ActionError("生效日格式需為 YYYY-MM-DD");
+  if (input.quote && (!Number.isSafeInteger(input.quote.amountCents) || input.quote.amountCents <= 0)) throw new ActionError("合約價需大於 0");
+  const before = resolvePrice(db.customerPrices, c, p, input.effectiveFrom);
+  const cents = input.quote ? quoteToBaseExTax(input.quote, p) : null;
+  if (cents !== null && cents <= 0) throw new ActionError("換算後單價需大於 0");
+  const row = tx.insert("customerPrices", {
+    id: `cp-${tx.nextNum("customerPrice") + 1000}`,
+    customerId: c.id,
+    productId: p.id,
+    effectiveFrom: input.effectiveFrom,
+    priceExTaxCents: cents,
+    quoted: input.quote ?? undefined,
+    note: input.note?.trim() || undefined,
+    createdAt: ctx.now,
+    createdBy: ctx.actor.id,
+  });
+  const fmt = (x: number) => `NT$${(x / 100).toLocaleString()}／${p.baseUnit}（未稅）`;
+  tx.event({
+    feature: "crm",
+    entityType: "CustomerPrice",
+    entityId: row.id,
+    action: cents === null ? "end_agreed_price" : "set_agreed_price",
+    summary: cents === null ? `${c.name} 的 ${p.name} 合約價停用，${input.effectiveFrom} 起回到等級價` : `${c.name} 的 ${p.name} 合約價 ${fmt(cents)}，${input.effectiveFrom} 起生效`,
+    before: `${before.source === "contract" ? "合約價" : "等級價"} ${fmt(before.cents)}`,
+    after: cents === null ? `等級價 ${fmt(before.tierCents)}` : fmt(cents),
+    reason: row.note,
+  });
+  return tx.db;
+}
+
 /* ───────────────────────── Manual creation (＋) ───────────────────────── */
 
 function parseOrThrow<T>(schema: { safeParse: (v: unknown) => { success: true; data: T } | { success: false; error: { issues: { message: string }[] } } }, input: unknown): T {
@@ -1044,7 +1091,12 @@ export function createCustomer(db: Db, ctx: ActCtx, input: CustomerInput): { db:
   };
   tx.insert("customers", c);
   tx.event({ feature: "crm", entityType: "Customer", entityId: id, action: "create", summary: `新增客戶 ${c.name}（${c.segment}・${TERMS[c.settlementTerms]}）`, after: `${c.ownerName}・${c.phone}` });
-  return { db: tx.db, value: id };
+  let out = tx.db;
+  // promised at onboarding → effective from the onboarding date; each row is its own audited event
+  for (const row of v.agreedPrices) {
+    out = setAgreedPrice(out, { ...ctx, correlationId: tx.correlationId }, { customerId: id, productId: row.productId, quote: { amountCents: twd(row.amount), unit: row.unit, taxIncluded: row.taxIncluded }, effectiveFrom: v.onboardedAt, note: "建檔時約定" });
+  }
+  return { db: out, value: id };
 }
 const TERMS = { daily: "日結", monthly: "月結", mixed: "混合" } as const;
 
@@ -1062,7 +1114,8 @@ export function createManualOrder(db: Db, ctx: ActCtx, input: OrderInput, confir
   const lines: OrderLine[] = v.lines.map((l, i) => {
     const p = db.products.find((x) => x.id === l.productId);
     if (!p) throw new ActionError("找不到品項");
-    const list = p.price[customer.priceTier];
+    // the agreed (合約) price, or the tier price when there is none — 改價 is measured against this
+    const list = resolvePrice(db.customerPrices, customer, p, v.deliveryDate).cents;
     const price = l.priceOverride === null ? list : twd(l.priceOverride);
     if (price !== list) overrides.push(`${p.name} ${list / 100}→${price / 100}（${l.priceReason}）`);
     return { id: `${orderId}-L${i + 1}`, productId: p.id, qty: l.qty, unit: l.unit, qtyBase: toBaseQty(p, l.qty, l.unit), unitPriceExTaxCents: price, taxRateBp: 500, note: price !== list ? `改價：${l.priceReason}` : undefined };

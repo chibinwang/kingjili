@@ -11,6 +11,15 @@ const TW_PHONE = /^(09\d{2}-?\d{3}-?\d{3}|0\d{1,2}-?\d{3,4}-?\d{4})$/;
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 const req = (label: string) => z.string().trim().min(1, `請輸入${label}`);
 
+export const agreedPriceRow = z.object({
+  productId: req("品項"),
+  /** Whole TWD as quoted to the customer. */
+  amount: z.number().int("合約價需為整數元").min(1, "合約價需大於 0").max(1_000_000),
+  unit: z.enum(["base", "pack"]),
+  taxIncluded: z.boolean(),
+});
+export type AgreedPriceRowInput = z.input<typeof agreedPriceRow>;
+
 export const customerSchema = z
   .object({
     name: req("客戶名稱").max(30, "名稱最多 30 字"),
@@ -34,8 +43,15 @@ export const customerSchema = z
     taxId: z.string().trim(),
     carrierType: z.enum(["none", "mobile", "member", "citizen"]),
     carrierValue: z.string().trim(),
+    /** 合約價 promised at onboarding; effective from onboardedAt. */
+    agreedPrices: z.array(agreedPriceRow).default([]),
   })
   .superRefine((v, ctx) => {
+    const seen = new Set<string>();
+    v.agreedPrices.forEach((row, i) => {
+      if (seen.has(row.productId)) ctx.addIssue({ code: "custom", path: ["agreedPrices", i, "productId"], message: "同一品項只能有一個合約價" });
+      seen.add(row.productId);
+    });
     if (v.windowEnd <= v.windowStart) ctx.addIssue({ code: "custom", path: ["windowEnd"], message: "結束需晚於開始" });
     if (v.invoiceClass === "B2B" && !isValidTaxId(v.taxId)) ctx.addIssue({ code: "custom", path: ["taxId"], message: "統一編號需 8 碼且檢查碼正確" });
     if (v.invoiceClass === "B2C" && v.carrierType === "mobile" && !isValidMobileCarrier(v.carrierValue)) ctx.addIssue({ code: "custom", path: ["carrierValue"], message: "手機條碼為「/」加 7 碼大寫英數" });

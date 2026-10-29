@@ -7,6 +7,7 @@ import type {
   ArDocument,
   Customer,
   CustomerNote,
+  CustomerPrice,
   Delivery,
   DemoUser,
   InventoryLot,
@@ -31,6 +32,8 @@ export interface Db {
   users: DemoUser[];
   customers: Customer[];
   crmNotes: CustomerNote[];
+  /** 合約價, effective-dated; see domain/pricing.ts. */
+  customerPrices: CustomerPrice[];
   products: Product[];
   locations: StockLocation[];
   lots: InventoryLot[];

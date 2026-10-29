@@ -217,3 +217,27 @@ export const CRM_NOTES: CustomerNote[] = [
   N("note-5", "C11", "2026-08-20T14:00:00+08:00", "visit", "新客戶開戶完成，習慣用 LINE 下單，日結收現。"),
   N("note-6", "C09", "2026-10-09T09:15:00+08:00", "call", "蔡老闆尚未加入官方帳號，下次送貨時請司機協助綁定 LINE。", "2026-10-26"),
 ];
+
+/**
+ * 合約價 promised to customers. [customerId, productId, amount (whole TWD, as quoted), unit, taxIncluded, effectiveFrom | null = onboarding date, note]
+ * 阿宏鹹酥雞 (C03) intentionally has none — it is the tier-price reference customer in the tests.
+ * 長青自助餐 黃金魚排 is deliberately below standard cost (demo of the margin warning).
+ */
+export const AGREED_PRICES: [string, string, number, "base" | "pack", boolean, string | null, string][] = [
+  ["C01", "P001", 152, "base", false, null, "開戶約定"],
+  ["C01", "P001", 148, "base", false, "2026-09-01", "叫貨量增加，重新議價"],
+  ["C01", "P009", 1680, "pack", true, null, "以箱報價（含稅）"],
+  ["C01", "P003", 125, "base", false, null, "開戶約定"],
+  ["C02", "P002", 2289, "pack", true, null, "以箱報價（含稅）"],
+  ["C02", "P005", 118, "base", false, null, "開戶約定"],
+  ["C04", "P006", 140, "base", false, null, "蔬食品項整批約定"],
+  ["C04", "P014", 150, "base", false, null, "蔬食品項整批約定"],
+  ["C06", "P005", 112, "base", false, null, "自助餐大量用"],
+  ["C06", "P001", 155, "base", false, null, "開戶約定"],
+  ["C06", "P012", 138, "base", false, null, "老客戶讓利（低於成本，待檢討）"],
+  ["C08", "P007", 90, "base", false, null, "開戶約定"],
+  ["C08", "P002", 215, "base", false, null, "開戶約定"],
+  ["C12", "P001", 150, "base", false, null, "開戶約定"],
+  ["C12", "P009", 168, "base", false, null, "開戶約定"],
+  ["C12", "P003", 780, "pack", false, null, "以箱報價（未稅）"],
+];

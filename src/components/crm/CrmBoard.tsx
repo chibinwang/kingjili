@@ -5,12 +5,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, useSyncExternalStore } from "react";
 import { Badge, Button, Card, Drawer, Empty, Field, Input, Money, Segmented, Select } from "@/components/ui";
 import { addCustomerNote } from "@/lib/actions";
+import { AgreedPriceCardLine, AgreedPriceCell, AgreedPriceTable, agreedPriceShort } from "./AgreedPrices";
 import { cn } from "@/lib/cn";
 import { TERMS_LABEL } from "@/lib/domain/ar";
 import { CRM_STATUS_LABEL, NOTE_KIND_LABEL, tenureLabel, type CrmRow } from "@/lib/domain/crm";
+import { PRICE_TIER_LABEL } from "@/lib/domain/pricing";
 import type { Customer, CustomerNote, CustomerSegment } from "@/lib/domain/types";
 import { formatTWD } from "@/lib/money";
-import { crmRows, maps } from "@/lib/selectors";
+import { agreedPrices, crmRows, maps } from "@/lib/selectors";
 import { useDb, useStore } from "@/lib/store";
 import { addDays, DEMO_TODAY, formatDate, formatDateTime } from "@/lib/time";
 
@@ -24,7 +26,6 @@ interface Item {
 
 const SEG_TONE: Record<CustomerSegment, "amber" | "info"> = { 炸物店: "amber", 餐廳: "info" };
 const SORT_LABEL: Record<SortKey, string> = { name: "客戶名稱", tenure: "合作年資", revenue: "近 30 天營業額", balance: "應收餘額" };
-const PRICE_LABEL = { standard: "一般價", volume: "量販價", vip: "VIP 價" } as const;
 const VIEW_KEY = "kingjili-crm-view";
 
 function readSavedView(): View | null {
@@ -301,6 +302,7 @@ function CustomerCard({ item: { c, r }, onOpen }: { item: Item; onOpen: () => vo
             <Tenure c={c} r={r} />
           </dd>
         </dl>
+        <AgreedPriceCardLine c={c} />
         <div className="mx-4 mt-3 grid grid-cols-2 gap-2 rounded-lg bg-sunk px-3 py-2.5">
           <div className="min-w-0">
             <div className="text-[11px] text-muted">近 30 天營業額</div>
@@ -356,6 +358,7 @@ function SortTh({ k, children, right, sort, onSort }: { k: SortKey; children: st
 }
 
 function CustomerList({ items, sort, onSort, onOpen }: { items: Item[]; sort: { key: SortKey; dir: 1 | -1 }; onSort: (k: SortKey) => void; onOpen: (id: string) => void }) {
+  const prices = agreedPrices(useDb());
   return (
     <Card className="overflow-hidden">
       {/* phones: compact two-line rows instead of a sideways-scrolling table */}
@@ -373,7 +376,10 @@ function CustomerList({ items, sort, onSort, onOpen }: { items: Item[]; sort: { 
                   <span className="truncate">
                     {c.ownerName}・<span className="num">{c.phone}</span>
                   </span>
-                  <span className="shrink-0">{c.segment}・{tenureLabel(r.tenureMonths)}</span>
+                  <span className="shrink-0">
+                    {agreedPriceShort(prices.get(c.id)!) && <span className="text-amber-deep">{agreedPriceShort(prices.get(c.id)!)}・</span>}
+                    {c.segment}・{tenureLabel(r.tenureMonths)}
+                  </span>
                 </div>
               </div>
             </button>
@@ -391,6 +397,7 @@ function CustomerList({ items, sort, onSort, onOpen }: { items: Item[]; sort: { 
               <SortTh k="tenure" sort={sort} onSort={onSort}>往來起始・年資</SortTh>
               <th>地區</th>
               <th>結帳</th>
+              <th>價格</th>
               <SortTh k="revenue" right sort={sort} onSort={onSort}>
                 近 30 天
               </SortTh>
@@ -420,6 +427,9 @@ function CustomerList({ items, sort, onSort, onOpen }: { items: Item[]; sort: { 
                 </td>
                 <td>{c.district}</td>
                 <td className="whitespace-nowrap">{TERMS_LABEL[c.settlementTerms]}</td>
+                <td>
+                  <AgreedPriceCell c={c} />
+                </td>
                 <td className="r whitespace-nowrap">
                   <Money cents={r.revenue30} />
                   <div>
@@ -444,7 +454,8 @@ function CustomerList({ items, sort, onSort, onOpen }: { items: Item[]; sort: { 
 
 function CustomerPanel({ item: { c, r }, onClose, onPrev, onNext, onAr }: { item: Item; onClose: () => void; onPrev?: () => void; onNext?: () => void; onAr: () => void }) {
   const db = useDb();
-  const [tab, setTab] = useState<"overview" | "orders" | "notes">("overview");
+  const [tab, setTab] = useState<"overview" | "prices" | "orders" | "notes">("overview");
+  const priceCount = agreedPrices(db).get(c.id)!.lines.length;
   const manager = db.users.find((u) => u.id === c.accountManagerId);
   const notes = db.crmNotes.filter((n) => n.customerId === c.id).sort((a, b) => b.at.localeCompare(a.at));
   return (
@@ -498,6 +509,7 @@ function CustomerPanel({ item: { c, r }, onClose, onPrev, onNext, onAr }: { item
         onChange={setTab}
         options={[
           { value: "overview", label: "概覽" },
+          { value: "prices", label: `合約價（${priceCount}）` },
           { value: "orders", label: "訂購習慣" },
           { value: "notes", label: `往來紀錄（${notes.length}）` },
         ]}
@@ -519,7 +531,15 @@ function CustomerPanel({ item: { c, r }, onClose, onPrev, onNext, onAr }: { item
               <Row k="收貨時段" v={<span className="num">{c.window.start}–{c.window.end}</span>} />
               <Row k="負責業務" v={manager ? `${manager.name}（${manager.title}）` : "—"} />
               <Row k="結帳條件" v={`${TERMS_LABEL[c.settlementTerms]}${c.settlementTerms === "mixed" ? `・當日收 ${(c.sameDayShareBp ?? 0) / 100}%` : ""}・信用額度 ${formatTWD(c.creditLimitCents)}`} />
-              <Row k="價格等級" v={PRICE_LABEL[c.priceTier]} />
+              <Row
+                k="價格"
+                v={
+                  <button onClick={() => setTab("prices")} className="text-left hover:text-amber-deep">
+                    {PRICE_TIER_LABEL[c.priceTier]}
+                    {priceCount > 0 && <span className="text-amber-deep">・合約價 {priceCount} 項 →</span>}
+                  </button>
+                }
+              />
               <Row k="發票" v={c.invoiceClass === "B2B" ? `B2B・統編 ${c.taxId}` : `B2C${c.carrier ? `・${c.carrier.type === "mobile" ? "手機條碼" : c.carrier.type === "member" ? "會員載具" : "自然人憑證"}` : "・紙本"}`} />
               <Row
                 k="LINE"
@@ -532,6 +552,7 @@ function CustomerPanel({ item: { c, r }, onClose, onPrev, onNext, onAr }: { item
             </dl>
           </div>
         )}
+        {tab === "prices" && <AgreedPriceTable c={c} />}
         {tab === "orders" && (r.lastOrderDate ? <OrderHabits r={r} /> : <div className="py-8 text-center text-[12.5px] text-muted">尚無訂單。到「訂單」按 ＋ 建立第一張訂單。</div>)}
         {tab === "notes" && <Notes c={c} notes={notes} />}
       </div>

@@ -7,6 +7,7 @@ import { Badge, Button, Drawer, Field, Input, Money, Segmented, Select } from "@
 import { activePlan, createManualOrder, pasteOrderText } from "@/lib/actions";
 import { TERMS_LABEL } from "@/lib/domain/ar";
 import { fieldErrors, orderSchema, type OrderInput } from "@/lib/domain/forms";
+import { PRICE_TIER_LABEL, resolvePrice } from "@/lib/domain/pricing";
 import type { Product } from "@/lib/domain/types";
 import { formatTWD, lineAmount, taxOnExclusive, twd } from "@/lib/money";
 import { arSummary, crmRows, maps, stockPositions } from "@/lib/selectors";
@@ -15,7 +16,6 @@ import { addDays, DEMO_TODAY, formatDate } from "@/lib/time";
 
 type Line = OrderInput["lines"][number];
 const blank = (): Line => ({ productId: "", qty: 1, unit: "base", priceOverride: null, priceReason: "" });
-const PRICE_LABEL = { standard: "一般價", volume: "量販價", vip: "VIP 價" } as const;
 
 export function OrderForm({ onClose, onCreated, initialCustomerId }: { onClose: () => void; onCreated: (orderId: string) => void; initialCustomerId?: string }) {
   const db = useDb();
@@ -29,7 +29,8 @@ export function OrderForm({ onClose, onCreated, initialCustomerId }: { onClose: 
   const ar = c ? arSummary(db).rows.find((r) => r.customerId === c.id) : undefined;
   const crm = c ? crmRows(db).find((r) => r.customerId === c.id) : undefined;
 
-  const listPrice = (p: Product) => (c ? p.price[c.priceTier] : p.price.standard);
+  const listPrice = (p: Product) => resolvePrice(db.customerPrices, c, p, v.deliveryDate).cents;
+  const isContract = (p: Product) => resolvePrice(db.customerPrices, c, p, v.deliveryDate).source === "contract";
   const priceOf = (l: Line, p: Product) => (l.priceOverride === null ? listPrice(p) : twd(l.priceOverride));
   const baseQty = (l: Line, p: Product) => (l.unit === "pack" ? l.qty * p.packSize : l.qty);
 
@@ -42,7 +43,7 @@ export function OrderForm({ onClose, onCreated, initialCustomerId }: { onClose: 
     const tax = taxOnExclusive(ex);
     return { ex, tax, total: ex + tax };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [v.lines, c, m.products]);
+  }, [v.lines, v.deliveryDate, c, m.products, db.customerPrices]);
 
   const parsed = orderSchema.safeParse(v);
   const errs = tried && !parsed.success ? fieldErrors(parsed.error) : {};
@@ -147,7 +148,7 @@ export function OrderForm({ onClose, onCreated, initialCustomerId }: { onClose: 
         {c && ar && (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg bg-sunk px-3 py-2 text-[12px] text-muted">
             <span>
-              {TERMS_LABEL[c.settlementTerms]}・{PRICE_LABEL[c.priceTier]}
+              {TERMS_LABEL[c.settlementTerms]}・{PRICE_TIER_LABEL[c.priceTier]}
             </span>
             <span>
               收貨 <span className="num">{c.window.start}–{c.window.end}</span>
@@ -223,7 +224,12 @@ export function OrderForm({ onClose, onCreated, initialCustomerId }: { onClose: 
                         aria-label={`第 ${i + 1} 列單價`}
                         title={p ? `每${p.baseUnit}未稅單價` : undefined}
                       />
-                      {p && <div className="mt-1 text-right text-[11px] text-muted">{formatTWD(lineAmount(need, priceOf(l, p)))}</div>}
+                      {p && (
+                        <div className="mt-1 text-right text-[11px] text-muted">
+                          {isContract(p) && !changed && <span className="mr-1 text-amber-deep">合約價</span>}
+                          {formatTWD(lineAmount(need, priceOf(l, p)))}
+                        </div>
+                      )}
                     </div>
                     <button onClick={() => setV((x) => ({ ...x, lines: x.lines.length > 1 ? x.lines.filter((_, j) => j !== i) : [blank()] }))} className="ml-auto grid h-9 w-7 place-items-center text-faint hover:text-bad sm:ml-0" aria-label={`刪除第 ${i + 1} 列`}>
                       <Trash2 size={15} />
@@ -231,7 +237,7 @@ export function OrderForm({ onClose, onCreated, initialCustomerId }: { onClose: 
                   </div>
                   {changed && p && (
                     <div className="mt-2 flex items-center gap-2">
-                      <Badge tone="warn">改價 {listPrice(p) / 100} → {l.priceOverride}</Badge>
+                      <Badge tone="warn">改價 {isContract(p) ? "合約價 " : ""}{listPrice(p) / 100} → {l.priceOverride}</Badge>
                       <Input value={l.priceReason} onChange={(e) => setLine(i, { priceReason: e.target.value })} placeholder="改價原因（必填，主任可在操作紀錄看到）" className={`h-8 text-[12.5px] ${errs[`lines.${i}.priceReason`] ? "border-bad" : ""}`} aria-label={`第 ${i + 1} 列改價原因`} />
                     </div>
                   )}

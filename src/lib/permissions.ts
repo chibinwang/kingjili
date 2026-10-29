@@ -2,6 +2,7 @@ import type { Role } from "./domain/types";
 
 export type Permission =
   | "crm.edit"
+  | "price.manage"
   | "order.validate"
   | "order.cancel"
   | "route.approve"
@@ -30,6 +31,7 @@ export type Permission =
 
 const MATRIX: Record<Permission, Role[]> = {
   "crm.edit": ["sales", "owner"],
+  "price.manage": ["sales", "owner"],
   "order.validate": ["sales", "owner"],
   "order.cancel": ["sales", "owner"],
   "route.approve": ["owner"],

@@ -4,6 +4,7 @@ import { TriangleAlert } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { Button, Drawer, Field, Input, Segmented, Select } from "@/components/ui";
 import { createCustomer } from "@/lib/actions";
+import { AgreedPriceRowsInput } from "@/components/crm/AgreedPrices";
 import { customerSchema, DEFAULT_CREDIT, fieldErrors, findCustomerDuplicates, SUBTYPE_SUGGESTIONS, type CustomerInput } from "@/lib/domain/forms";
 import { useDb, useStore } from "@/lib/store";
 import { DEMO_TODAY } from "@/lib/time";
@@ -50,6 +51,7 @@ export function CustomerForm({ onClose, onCreated }: { onClose: () => void; onCr
     taxId: "",
     carrierType: "none",
     carrierValue: "",
+    agreedPrices: [],
   });
   const [tried, setTried] = useState(false);
   const [dupOk, setDupOk] = useState(false);
@@ -228,6 +230,10 @@ export function CustomerForm({ onClose, onCreated }: { onClose: () => void; onCr
               </>
             )}
           </div>
+        </Section>
+        <Section n={4} title="合約價（選填）">
+          <p className="text-[12px] text-muted">開戶時承諾的品項價格，自往來起始日生效；未列出的品項依價格等級計價。之後可在客戶資料的「合約價」分頁調整。</p>
+          <AgreedPriceRowsInput rows={v.agreedPrices ?? []} onChange={(rows) => set("agreedPrices", rows)} products={db.products} errors={errs} />
         </Section>
         <p className="text-[11.5px] text-muted">LINE 官方帳號：新客戶預設「未綁定」，需客戶加入官方帳號並完成綁定後才能收到對帳通知。</p>
       </div>

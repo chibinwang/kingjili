@@ -2,12 +2,14 @@ import { planAllocation } from "../domain/ar";
 import type { AiTask, LineInboxMessage } from "../domain/ai";
 import { reserveOrder, type Reservation } from "../domain/inventory";
 import { toBaseQty, unitLabel } from "../domain/orders";
+import { quoteToBaseExTax, resolvePrice } from "../domain/pricing";
 import { buildStatement, snapshotHash } from "../domain/statements";
 import type {
   ActionEvent,
   AgentMemory,
   ArDocument,
   Customer,
+  CustomerPrice,
   Delivery,
   InventoryLot,
   OrderLine,
@@ -23,9 +25,9 @@ import type {
 import { lineAmount, roundToUnit, sum, taxOnExclusive, twd } from "../money";
 import { addDays, at, DEMO_TODAY, dayOfWeek, periodOf, periodRange } from "../time";
 import type { Db } from "../db";
-import { AGENT, CRM_NOTES, CUSTOMERS, PRODUCTS, SUPPLIERS, TODAY_ORDERS, TODAY_SEQUENCE, USERS, VEHICLES_SEED, type CustomerSeed } from "./catalog";
+import { AGENT, AGREED_PRICES, CRM_NOTES, CUSTOMERS, PRODUCTS, SUPPLIERS, TODAY_ORDERS, TODAY_SEQUENCE, USERS, VEHICLES_SEED, type CustomerSeed } from "./catalog";
 
-export const SEED_VERSION = 6;
+export const SEED_VERSION = 7;
 
 function mulberry32(seed: number) {
   let a = seed;
@@ -60,7 +62,14 @@ export function buildSeed(): Db {
 
   const driverName = (v: "A" | "B") => VEHICLES_SEED.find((x) => x.id === v)!.driverName;
 
-  const makeLines = (orderId: string, c: CustomerSeed, items: [string, "base" | "pack", number][]): OrderLine[] =>
+  const customerPrices: CustomerPrice[] = AGREED_PRICES.map(([customerId, productId, amount, unit, taxIncluded, from, note], i) => {
+    const c = customers.find((x) => x.id === customerId)!;
+    const quoted = { amountCents: twd(amount), unit, taxIncluded };
+    const effectiveFrom = from ?? c.onboardedAt;
+    return { id: `cp-${i + 1}`, customerId, productId, effectiveFrom, priceExTaxCents: quoteToBaseExTax(quoted, pById.get(productId)!), quoted, note, createdAt: at(effectiveFrom, "10:00"), createdBy: c.accountManagerId };
+  });
+
+  const makeLines = (orderId: string, c: CustomerSeed, items: [string, "base" | "pack", number][], date: string): OrderLine[] =>
     items.map(([pid, unit, qty], i) => {
       const p = pById.get(pid)!;
       return {
@@ -69,7 +78,7 @@ export function buildSeed(): Db {
         qty,
         unit,
         qtyBase: toBaseQty(p, qty, unit),
-        unitPriceExTaxCents: p.price[c.priceTier],
+        unitPriceExTaxCents: resolvePrice(customerPrices, c, p, date).cents,
         taxRateBp: 500,
       };
     });
@@ -87,7 +96,7 @@ export function buildSeed(): Db {
       const orderId = `o-${d}-${c.code}`;
       const source: SalesOrder["source"] = c.linkStatus === "linked" ? (rng() < 0.3 ? "LINE" : "APP") : "PHONE";
       const orderNo = `SO-${ymd(d)}-${String(dayIdx).padStart(2, "0")}`;
-      const lines = makeLines(orderId, c, items);
+      const lines = makeLines(orderId, c, items, d);
       orders.push({
         id: orderId,
         no: orderNo,
@@ -323,7 +332,7 @@ export function buildSeed(): Db {
         orderAt: at(DEMO_TODAY, `0${5 + (todayIdx % 2)}:${String(10 + todayIdx * 3).padStart(2, "0")}`),
         deliveryDate: DEMO_TODAY,
         state: "Reserved",
-        lines: makeLines(orderId, c, TODAY_ORDERS[c.id]),
+        lines: makeLines(orderId, c, TODAY_ORDERS[c.id], DEMO_TODAY),
         createdBy: source === "PHONE" ? "u-sales" : "system",
         aiExtracted: isLine,
         rawText: c.id === "C03" ? "老闆早 今天花枝丸12包 甜不辣6包 薯條4袋 一樣下午前到就好 謝謝" : c.id === "C04" ? "綠田 今天要 薯條6箱、素雞塊8包、素排骨3包 麻煩了🙏" : undefined,
@@ -448,6 +457,7 @@ export function buildSeed(): Db {
     users: USERS,
     customers,
     crmNotes: CRM_NOTES,
+    customerPrices,
     products,
     locations,
     lots,
