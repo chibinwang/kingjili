@@ -1,26 +1,156 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@theme {
+  --color-paper: #f6f4ef;
+  --color-surface: #ffffff;
+  --color-sunk: #faf9f6;
+  --color-line: #e8e4db;
+  --color-line-strong: #d9d3c6;
+  --color-ink: #1b2430;
+  --color-ink-2: #3c4654;
+  --color-muted: #6f7782;
+  --color-faint: #9aa1aa;
+  --color-amber: #e0a020;
+  --color-amber-deep: #b47a0c;
+  --color-amber-soft: #fcf3dd;
+  --color-amber-wash: #fffaf0;
+  --color-truck-a: #d9921a;
+  --color-truck-b: #2f6f8f;
+  --color-truck-b-soft: #e6f0f4;
+  --color-ok: #2f7d5b;
+  --color-ok-soft: #e6f3ec;
+  --color-warn: #b7791f;
+  --color-warn-soft: #fbf0db;
+  --color-bad: #b4483a;
+  --color-bad-soft: #f9e8e4;
+  --color-info: #3b6a9a;
+  --color-info-soft: #e8f0f8;
+  --color-ai: #6b55c9;
+  --color-ai-soft: #f0edfb;
+  --color-frost: #dfeef6;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --font-sans: var(--font-inter), var(--font-noto), "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
+  --font-mono: var(--font-mono-face), ui-monospace, "SFMono-Regular", monospace;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  --radius-card: 14px;
+  --shadow-card: 0 1px 0 rgba(27, 36, 48, 0.03), 0 1px 3px rgba(27, 36, 48, 0.04);
+  --shadow-pop: 0 12px 40px -12px rgba(27, 36, 48, 0.25), 0 2px 6px rgba(27, 36, 48, 0.06);
+
+  --animate-rise: rise 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-fade: fade 0.25s ease both;
+  --animate-slide-in: slide-in 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-pulse-soft: pulse-soft 2.2s ease-in-out infinite;
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes slide-in {
+    from { transform: translateX(24px); opacity: 0; }
+    to { transform: none; opacity: 1; }
+  }
+  @keyframes pulse-soft {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
   }
 }
 
+html {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "tnum" 1, "cv11" 1;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-paper);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+::selection {
+  background: var(--color-amber-soft);
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* table baseline */
+.tbl {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.tbl th {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--color-muted);
+  text-align: left;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--color-line);
+  background: var(--color-sunk);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.tbl td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f0ede6;
+  vertical-align: middle;
+}
+.tbl tbody tr:last-child td {
+  border-bottom: 0;
+}
+.tbl tbody tr.row-hover:hover td {
+  background: var(--color-amber-wash);
+}
+.tbl .r {
+  text-align: right;
+}
+
+.scroll-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: #ddd7cb;
+  border-radius: 8px;
+}
+
+/* print */
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+  html,
+  body {
+    background: #fff !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  /* pages printed from inside the app shell start at the page edge */
+  main {
+    padding: 0 !important;
+    max-width: none !important;
+  }
+  .statement-doc {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .print-page {
+    break-after: page;
+  }
+  .print-page:last-child {
+    break-after: auto;
+  }
 }

@@ -1,36 +1,87 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 金吉利營運中心 · Everyse AI-native Wholesale ERP（示範）
 
-## Getting Started
+冷凍食品**批發**（非製造）的接單 → 配車理貨 → 司機收款 → 月結對帳流程示範。規格依 `../PRD.md`。
 
-First, run the development server:
+> **所有資料皆為示範資料**：客戶、品項、價格、地址、統編、金額、路線距離與 AI 數值都是虛構。LINE、綠界 ECPay、ECOUNT 均為**模擬連接**，不會對外發送任何訊息、發票或資料。
+
+## 快速開始
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev          # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+| 指令 | 用途 |
+| --- | --- |
+| `npm run dev` | 開發伺服器 |
+| `npm run build && npm start` | 正式建置 |
+| `npm run lint` | ESLint |
+| `npm run typecheck` | TypeScript（strict） |
+| `npm test` | Vitest 單元測試（對帳、沖帳、補貨門檻、揀貨分組、路線限制、AI 權限邊界） |
+| `npm run e2e` | Playwright 端到端（首次先 `npx playwright install chromium`；或設定 `PW_CHROMIUM_PATH`） |
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+示範狀態存在瀏覽器 localStorage；每次示範前到 **設定 → 重置示範資料**。時鐘固定在 **2026/10/24（六）07:05（Asia/Taipei）**，每次操作前進數秒，確保流程可重現。
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 技術
 
-## Learn More
+Next.js 16（App Router）· TypeScript · Tailwind CSS v4 · 自製 shadcn 風格元件（cva + Lucide）· Recharts · Zustand（本機狀態）· Zod · ExcelJS · Vitest · Playwright。
 
-To learn more about Next.js, take a look at the following resources:
+- 金額一律**整數「分」**（TWD × 100），稅額以整數運算四捨五入至元；不使用浮點數。
+- 所有寫入都經 `src/lib/actions.ts` 的動作：驗證 → 權限 → 產生新狀態 → 寫入只增不改的 `ActionEvent`。動作是純函式，日後可直接換成 API。
+- 地圖、倉庫 3D 為 SVG 示意，不呼叫任何外部服務。
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+src/lib/domain/   業務規則（客戶名冊指標、訂單狀態機、FEFO、路線限制、揀貨分組、應收、對帳單、全月審查、LINE 解析、發票預檢）
+src/lib/seed/     固定種子資料（12 客戶、14 品項、2026/08–10 歷史、刻意埋入的帳務異常）
+src/lib/actions.ts  權限檢查的寫入動作 + 事件紀錄
+src/lib/agent.ts  規則式 AI：指令 → 計畫 → 試算 → 驗證 → 待核准任務
+src/lib/connectors.ts  LineStatementSender / EcpayInvoiceProvider / ErpSync 合約與模擬實作
+src/app/(app)/    11 個主畫面 + /driver 手機版
+src/app/print/    理貨單、對帳單列印（瀏覽器另存 PDF）
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 6 分鐘示範腳本
 
-## Deploy on Vercel
+以右上角 **周筱汶（主任）** 進行；需要其他角色核准的按鈕會直接標示「以會計 張淑芬…」代為示範（實際上線需各自登入）。
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| 時間 | 畫面 | 動作與重點 |
+| --- | --- | --- |
+| 0:00 | 總覽 | 月營收、毛利（素排骨缺成本 → 標示）、應收／逾期、AI 待核准。切到 **倉庫配置**：點凍庫 A–D 看品項、待揀與過期／低庫存提醒。 |
+| 0:50 | 訂單 | LINE 收件匣 → **AI 解析成草稿**。「薯條5」沒寫單位 → 不會自己猜；改單位或按已確認 → **確認訂單並保留庫存**（FEFO）。 |
+| 1:30 | 今日配送 | B 車 三味食堂預估超時。**預覽 AI 路線建議**：巷口炸物 B→A，前後地圖／站序／12 項限制 → **確認調整**。路線 v2、按凍庫 A→D 理貨單、XLSX、列印同步更新。 |
+| 3:05 | 司機作業／客戶與應收 | **客戶名冊**：12 家餐廳／炸物店，卡片 ↔ 列表切換；卡片顯示負責人、聯絡電話、往來起始與合作年資。點「炸物店」篩選 → 開啟好味便當（需關注：逾期）→ 新增往來紀錄與追蹤日 → **查看應收明細**。司機完成送達並收現（**司機持有 ≠ 已入帳**），會計確認繳回、存入。長青自助餐 9 月部分付款 + 一筆未沖匯款。 |
+| 3:50 | 帳單與會計 | **批次對帳審查**：規則引擎找出重複收款、溢收、未沖帳、稅額差 NT$1、發票被退回。**AI 解釋與建議** → 會計核准沖回分錄（原紀錄保留）。 |
+| 4:35 | 對帳單 | 點福記炸物店：期初＋出貨−收款＝期末，與子帳一致。鎖定 → 會計審查 → 主管核准 → **預覽 LINE 發送**（安全連結訊息，狀態仍為模擬）→ PDF。 |
+| 5:00 | 電子發票 | 預檢抓到手機條碼格式錯誤；送出後「綠界已接收（模擬）」但「尚未上傳財政部」。 |
+| 5:20 | 採購／AI 工作台 | 薯條、花枝丸以「預估可用量」觸發補貨 → 草擬供應商 LINE 訊息 → 主管核准。AI：「把冷凍薯條補貨門檻設為30箱」→ 試算 → 核准。最後到 **操作紀錄** 看人員／AI／系統與同一關聯 ID 的完整軌跡。 |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 手動新增（每頁右上角 ＋）
+
+| 頁面 | ＋ 可新增 | 規則 |
+| --- | --- | --- |
+| 訂單 | 手動建立訂單・貼上 LINE／電話文字 | 價格依客戶等級帶入，改價需填原因；確認即 FEFO 保留庫存。今日訂單列入「待排車」，主任在今日配送選 A／B 車加入（只檢查該車限制，最佳插入位置）。貼上文字走 AI 草稿流程，仍需人工確認。 |
+| 客戶與應收 | 新增客戶・登錄收款 | 統編檢查碼、手機條碼格式即時驗證；名稱／電話／統編疑似重複需確認；地圖座標以地區中心估算並標示待確認。 |
+| 採購 | 手動建立採購單・新增供應商 | 新供應商預設未核准，主任核准後才可叫貨；採購單建立後待主管核准。 |
+| 庫存與凍庫 | 新增品項 | 架位預設該凍庫下一個空位且不可重複；量販／VIP 價預設 96%／92%；補貨點以箱輸入；LINE 常用叫法加入 AI 解析，與既有名稱衝突時擋下。新品項庫存為 0，經採購單收貨入庫。 |
+
+只有一項可新增時（如庫存與凍庫）＋ 直接開啟表單；多項時開啟選單。沒有權限的角色會看到灰色選項與所需角色。
+
+## 刻意埋入的示範情境
+
+- 路線 v1：巷口炸物 慣例排 B 車，B 車需跨河折返，三味食堂超出收貨時段。
+- 阿宏鹹酥雞 10/17 現金收款重複登錄（→ 重複收款、未沖帳、負餘額）。
+- 三味食堂 10/15 稅額手動多 NT$1。
+- 長青自助餐 9 月僅付部分，10/21 一筆負責人個人帳戶匯款未沖帳（工作記憶提供比對線索，但金額以帳本為準）。
+- 好味便當 8–9 月未付（逾期帳齡）。
+- 巷口炸物 10/20 發票被退回；老街食堂 10/22 載具格式錯誤。
+- 甜不辣一批已過期（鎖定不可配）；蔬食水餃一批 14 天內到期（FEFO 優先）。
+
+## 示範假設（待金吉利確認）
+
+凍庫 A–D 對應示意圖 1–4；A 車 1.5 噸、B 車 1.8 噸，08:00 出車、14:00 前回倉；月結次月 10 日前寄對帳單、25 日前付款；營業稅 5% 每張單據四捨五入至元；地圖距離＝直線 × 1.35、均速 28 km/h。詳見 PRD §11 與 `docs/INTEGRATIONS.md`。
+
+## 不宣稱的事
+
+- 不是導航或路線最佳化引擎（單站換車搜尋＋硬性限制檢查，示意距離）。
+- 不是法定會計或稅務系統；完整複式記帳為第二階段。
+- AI 為離線規則式代理，沒有呼叫外部模型；所有判定由確定性規則完成。
