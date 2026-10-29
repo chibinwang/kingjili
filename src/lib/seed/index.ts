@@ -353,7 +353,7 @@ export function buildSeed(): Db {
 
   const purchaseOrders: PurchaseOrder[] = [
     { id: "po-1", no: "PO-261020-01", supplierId: "S01", status: "sent_mock", lines: [{ productId: "P001", qtyBase: 100, unitCostCents: twd(118) }], createdAt: at("2026-10-22", "15:20"), expectedAt: "2026-10-26", createdBy: "u-proc", source: "manual" },
-    { id: "po-0", no: "PO-261012-01", supplierId: "S01", status: "received", lines: [{ productId: "P001", qtyBase: 150, unitCostCents: twd(118) }, { productId: "P003", qtyBase: 90, unitCostCents: twd(95) }], createdAt: at("2026-10-10", "11:02"), expectedAt: "2026-10-12", createdBy: "u-proc", source: "manual" },
+    { id: "po-0", no: "PO-261012-01", supplierId: "S01", status: "received", lines: [{ productId: "P001", qtyBase: 150, unitCostCents: twd(118) }, { productId: "P003", qtyBase: 90, unitCostCents: twd(95) }], createdAt: at("2026-10-10", "11:02"), expectedAt: "2026-10-12", receivedAt: "2026-10-12", createdBy: "u-proc", source: "manual" },
   ];
 
   // ---------- statements for Aug & Sep (locked snapshots, simulated send) ----------

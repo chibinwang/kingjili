@@ -377,6 +377,8 @@ export interface PurchaseOrder {
   lines: { productId: string; qtyBase: number; unitCostCents: Cents }[];
   createdAt: string;
   expectedAt: string;
+  /** Date goods were received (進). */
+  receivedAt?: string;
   createdBy: string;
   source: "manual" | "ai_suggestion" | "auto_rule";
   messagePreview?: string;

@@ -5,6 +5,7 @@ import { buildCrmRow } from "./domain/crm";
 import { stockPosition, type StockPosition } from "./domain/inventory";
 import { buildPickLines, type PickLine } from "./domain/picking";
 import { agreementSummary, type AgreementSummary } from "./domain/pricing";
+import { weeklyPnl } from "./domain/reports";
 import { evaluatePlan, suggestReassignment } from "./domain/routing";
 import { activePlan, routingContext } from "./actions";
 import type { Db } from "./db";
@@ -157,3 +158,6 @@ export const collectionsFor = memoArg((db, vehicle: "A" | "B" | "all") => {
     balances: new Map(arSummary(db).rows.map((r) => [r.customerId, r.balance])),
   });
 });
+
+/** Revenue / cost / gross profit for the last 12 weeks (Monday-started, last one ends today). */
+export const weeklyPnlView = memo((db) => weeklyPnl(db.arDocs, db.products, DEMO_TODAY, 12));

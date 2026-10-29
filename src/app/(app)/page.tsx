@@ -3,17 +3,17 @@
 import { ArrowUpRight, ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Bar as RBar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { RevenueProfitChart } from "@/components/charts/RevenueProfitChart";
 import { TodayTaskList, useTodayTasks } from "@/components/TodayTasks";
-import { Badge, Bar, Card, CardHeader, DemoNote, Metric, PageHeader, Segmented } from "@/components/ui";
+import { Badge, Bar, Card, CardHeader, DemoNote, Metric, PageHeader, Segmented, VehicleTag } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { WarehouseIso } from "@/components/WarehouseIso";
 import { METHOD_LABEL } from "@/lib/domain/ar";
 import { formatCompactTWD, formatTWD } from "@/lib/money";
 import { can } from "@/lib/permissions";
-import { arSummary, maps, routeView, salesMetrics, todayOrders } from "@/lib/selectors";
+import { arSummary, collectionsFor, maps, routeView, salesMetrics, todayOrders, weeklyPnlView } from "@/lib/selectors";
 import { useCurrentUser, useDb } from "@/lib/store";
-import { DEMO_TODAY, formatDate, formatDateTime, dayOfWeek, addDays } from "@/lib/time";
+import { formatDateTime } from "@/lib/time";
 
 export default function OverviewPage() {
   const [mode, setMode] = useState<"ops" | "floor">("ops");
@@ -22,7 +22,7 @@ export default function OverviewPage() {
       <PageHeader
         eyebrow="OVERVIEW"
         title="早安，周主任"
-        sub="今天 12 張訂單、兩台車。先看需要你決定的事，再看數字。"
+        sub="今天 12 張訂單、兩台車。先看生意的數字，再處理等你決定的事。"
         right={
           <Segmented
             value={mode}
@@ -55,19 +55,8 @@ function Ops() {
   const ready = orders.filter((o) => ["Reserved", "Picking"].includes(o.state)).length;
   const drafts = db.orders.filter((o) => o.state === "Draft").length + db.inbox.filter((x) => x.status === "new").length;
 
-  const chart = useMemo(() => {
-    const days: { date: string; label: string; v: number }[] = [];
-    let d = addDays(DEMO_TODAY, -1);
-    while (days.length < 7) {
-      if (dayOfWeek(d) !== 0) {
-        const found = sm.trailing.find((x) => x.date === d);
-        const v = found?.cents ?? db.arDocs.filter((x) => x.type === "charge" && x.issueDate === d).reduce((a, x) => a + x.exTaxCents, 0);
-        days.unshift({ date: d, label: formatDate(d, { weekday: true }), v: Math.round(v / 100) });
-      }
-      d = addDays(d, -1);
-    }
-    return days;
-  }, [sm, db.arDocs]);
+  const weeks = weeklyPnlView(db);
+  const cod = collectionsFor(db, "all");
 
   const recentPayments = useMemo(() => [...db.payments].filter((p) => !p.reversalOf).sort((a, b) => b.collectedAt.localeCompare(a.collectedAt)).slice(0, 6), [db.payments]);
   const recentEvents = useMemo(() => [...db.events].sort((a, b) => b.seq - a.seq).slice(0, 6), [db.events]);
@@ -76,24 +65,45 @@ function Ops() {
 
   return (
     <div className="space-y-5">
-      <Card className="grid grid-cols-2 gap-x-6 gap-y-5 px-6 py-5 md:grid-cols-3 xl:grid-cols-5">
+      <Card className="grid grid-cols-2 gap-x-6 gap-y-5 px-6 py-5 md:grid-cols-3 xl:grid-cols-6">
         <Metric label="本月營收（未稅）" value={formatCompactTWD(sm.monthRevenue)} foot={<span className={mtdDelta >= 0 ? "text-ok" : "text-bad"}>較 9 月同期 {mtdDelta >= 0 ? "+" : ""}{mtdDelta}%</span>} />
         {showMargin ? (
           <Metric
-            label="毛利率（初估）"
-            value={sm.grossMarginBp === null ? "尚無成本資料" : `${(sm.grossMarginBp / 100).toFixed(1)}%`}
-            foot={sm.uncostedRevenue > 0 ? <span title="素排骨尚無標準成本，未計入毛利">{formatTWD(sm.uncostedRevenue)} 營收缺成本</span> : "依標準成本"}
+            label="本月毛利（初估）"
+            value={formatCompactTWD(sm.grossProfit)}
+            foot={
+              <span title={sm.uncostedRevenue > 0 ? `${formatTWD(sm.uncostedRevenue)} 營收的品項尚無標準成本，未計入毛利` : "依標準成本"}>
+                毛利率 {sm.grossMarginBp === null ? "—" : `${(sm.grossMarginBp / 100).toFixed(1)}%`}
+                {sm.uncostedRevenue > 0 && "・部分缺成本"}
+              </span>
+            }
           />
-        ) : (
-          <Metric label="毛利率" value={<span className="text-[15px] text-faint">無權限</span>} foot="僅主任／會計可見" />
-        )}
+        ) : null}
         <Metric label="應收未收" value={formatCompactTWD(ar.open)} foot={`${ar.rows.filter((r) => r.balance > 0).length} 位客戶`} />
         <Metric label="逾期未收" value={formatCompactTWD(ar.overdue)} tone={ar.overdue > 0 ? "bad" : undefined} foot={`${ar.rows.filter((r) => r.overdue > 0).length} 位客戶逾期`} />
+        <Metric
+          label="今日現場收款"
+          value={formatCompactTWD(cod.collectedCents)}
+          foot={
+            <span>
+              應收 {formatCompactTWD(cod.expectedCents)}
+              <Bar value={cod.collectedCents} max={cod.expectedCents} tone="ok" className="mt-1.5" />
+            </span>
+          }
+        />
         <Metric label="今日訂單" value={`${orders.length} 張`} foot={`${ready} 張待出車・${drafts} 則待審`} />
       </Card>
 
       <div className="grid gap-5 xl:grid-cols-[1fr_420px]">
         <Card className="self-start">
+          <CardHeader title={showMargin ? "營收與毛利（近 12 週）" : "營收（近 12 週）"} sub="出貨認列・未稅・週一起算" right={<Badge tone="mock">示範資料</Badge>} />
+          <RevenueProfitChart weeks={weeks} showMargin={showMargin} />
+          <div className="border-t border-line px-5 py-3 text-[12px] text-muted">
+            營收依送達日認列（送貨單 ≠ 發票 ≠ 收款）；毛利依標準成本初估。想看客戶、品項或進銷存的細節，請在 AI 對話按「洞察報告」。
+          </div>
+        </Card>
+        <div className="space-y-5">
+          <Card>
           <CardHeader title={`今日任務（${today.total}）`} sub="AI 先試算並跑完規則驗證，按下核准才會寫入" />
           <div className="space-y-2.5 px-5 pb-5">
             {/* the AI 換車 proposal in the list already covers late stops; only flag them when nothing does */}
@@ -122,25 +132,10 @@ function Ops() {
             )}
             {showTasks && <TodayTaskList />}
           </div>
-        </Card>
+          </Card>
 
-        <Card>
-          <CardHeader title="近 7 個營業日營收" sub="出貨認列・未稅" right={<Badge tone="mock">示範資料</Badge>} />
-          <div className="h-[230px] px-2 pb-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chart} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                <CartesianGrid vertical={false} stroke="#efebe3" />
-                <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "#6f7782" }} />
-                <YAxis tickLine={false} axisLine={false} width={44} tick={{ fontSize: 11, fill: "#9aa1aa" }} tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
-                <Tooltip cursor={{ fill: "rgba(224,160,32,.08)" }} formatter={(v) => [`NT$${Number(v).toLocaleString()}`, "營收"]} contentStyle={{ borderRadius: 10, border: "1px solid #e8e4db", fontSize: 12 }} />
-                <RBar dataKey="v" fill="#e0a020" radius={[5, 5, 0, 0]} maxBarSize={34} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="border-t border-line px-5 py-3 text-[12px] text-muted">
-            營收依送達日認列（送貨單 ≠ 發票 ≠ 收款）；週日不出車。
-          </div>
-        </Card>
+          <CollectionsCard />
+        </div>
       </div>
 
       <div className="grid gap-5 lg:grid-cols-3">
@@ -210,5 +205,47 @@ function Ops() {
       </div>
       <DemoNote>所有金額為示範資料，非金吉利實際財務數字。毛利為依標準成本之初估。</DemoNote>
     </div>
+  );
+}
+
+/** Today's cash-on-delivery progress per truck; the driver screen reads the same numbers. */
+function CollectionsCard() {
+  const db = useDb();
+  const all = collectionsFor(db, "all");
+  return (
+    <Card>
+      <CardHeader title="今日收款進度" sub="司機收現 ≠ 銀行入帳" right={<Link href="/driver" className="text-[12px] text-muted hover:text-ink">司機作業 →</Link>} />
+      <div className="space-y-3.5 px-5 pb-4">
+        {db.vehicles.map((v) => {
+          const c = collectionsFor(db, v.id);
+          return (
+            <div key={v.id}>
+              <div className="mb-1 flex items-center justify-between text-[12.5px]">
+                <span className="inline-flex items-center gap-1.5 text-ink-2">
+                  <VehicleTag v={v.id} /> {v.driverName}
+                  <span className="text-faint">
+                    {c.deliveredStops}／{c.stops.length} 站
+                  </span>
+                </span>
+                <span className="num">
+                  <b className="font-semibold">{formatTWD(c.collectedCents)}</b>
+                  <span className="text-muted"> / {formatTWD(c.expectedCents)}</span>
+                </span>
+              </div>
+              <Bar value={c.collectedCents} max={c.expectedCents} tone={v.id === "B" ? "b" : "amber"} />
+            </div>
+          );
+        })}
+        <div className="flex flex-wrap justify-between gap-2 border-t border-line pt-2.5 text-[12px] text-muted">
+          <span>
+            司機持有現金 <b className="num text-ink-2">{formatTWD(all.cashHeldCents)}</b>
+          </span>
+          <span>
+            已繳回 <b className="num text-ink-2">{formatTWD(all.handedOverCents)}</b>
+          </span>
+          {all.shortfallCents > 0 && <span className="text-warn">短收 {formatTWD(all.shortfallCents)}</span>}
+        </div>
+      </div>
+    </Card>
   );
 }

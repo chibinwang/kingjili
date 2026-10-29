@@ -919,7 +919,7 @@ export function receivePurchaseOrder(db: Db, ctx: ActCtx, poId: string, lotCode:
     const p = db.products.find((x) => x.id === l.productId)!;
     tx.insert("lots", { id: `lot-${p.id}-${lotCode}`, productId: p.id, locationId: `loc-${p.shelf}`, zone: p.zone, lot: lotCode, expiry, receivedAt: today, qtyOnHand: l.qtyBase, qtyReserved: 0 });
   }
-  tx.patch("purchaseOrders", poId, { status: "received" });
+  tx.patch("purchaseOrders", poId, { status: "received", receivedAt: today });
   tx.event({ feature: "inventory", entityType: "PurchaseOrder", entityId: poId, action: "receive", summary: `${po.no} 冷凍收貨入庫，批號 ${lotCode}，效期 ${expiry}` });
   return tx.db;
 }
