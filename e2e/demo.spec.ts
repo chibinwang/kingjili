@@ -103,13 +103,13 @@ test("customer statement: preview, chat edits, inline edits, PDF download", asyn
   await expect(page.locator("h1")).toHaveText("月結對帳單");
   await expect(page.getByText("與帳務資料一致")).toBeVisible();
   const due = page.getByTestId("amount-due");
-  await expect(due).toHaveText("NT$77,400");
+  await expect(due).toHaveText("NT$75,783");
 
   const chat = page.getByRole("textbox", { name: "修改指令" });
   await chat.fill("新增一筆退貨折讓 500 元");
   await chat.press("Enter");
-  await expect(due).toHaveText("NT$76,900");
-  await expect(page.getByText(/與帳務 NT\$77,400 相差/)).toBeVisible();
+  await expect(due).toHaveText("NT$75,283");
+  await expect(page.getByText(/與帳務 NT\$75,783 相差/)).toBeVisible();
   await chat.fill("今天天氣如何");
   await chat.press("Enter");
   await expect(page.getByText("這句我還看不懂", { exact: false })).toBeVisible();
@@ -123,10 +123,10 @@ test("customer statement: preview, chat edits, inline edits, PDF download", asyn
   await expect(page.getByText(/已修改 2 處/)).toBeVisible();
 
   await page.reload();
-  await expect(due).toHaveText("NT$76,900");
+  await expect(due).toHaveText("NT$75,283");
   await page.getByRole("button", { name: "復原" }).click();
   await page.getByRole("button", { name: "還原系統資料" }).click();
-  await expect(due).toHaveText("NT$77,400");
+  await expect(due).toHaveText("NT$75,783");
 
   await page.evaluate(() => (window.print = () => document.body.setAttribute("data-printed", document.title)));
   await page.getByRole("button", { name: "下載 PDF" }).click();
@@ -367,4 +367,73 @@ test("＋ 新增品項 lands in stock as a new item and LINE text recognises its
   await paste.getByLabel("訊息內容").fill("明天要 馬鈴薯球3包");
   await paste.getByRole("button", { name: /轉成草稿/ }).click();
   await expect(page.getByText("洋芋球").first()).toBeVisible();
+});
+
+test("客戶與應收 shows each customer's agreed prices in cards, list and the panel", async ({ page }) => {
+  await fresh(page, "/customers?tab=crm");
+  const card = page.getByTestId("crm-cards").locator("div", { hasText: "長青自助餐" }).filter({ has: page.getByTestId("agreed-price-line") }).first();
+  await expect(card.getByTestId("agreed-price-line")).toContainText("合約價 3 項");
+  await expect(card.getByText(/低於成本 1/)).toBeVisible();
+  await page.getByRole("tab", { name: /列表/ }).click();
+  await expect(page.getByTestId("crm-table").locator("tr", { hasText: "福記炸物店" })).toContainText("合約價 3 項");
+  await page.getByTestId("crm-table").getByRole("button", { name: "長青自助餐" }).click();
+  await page.getByRole("tab", { name: /^合約價/ }).click();
+  const table = page.getByTestId("agreed-price-table");
+  await expect(table.locator("tr", { hasText: "黃金魚排" })).toContainText("NT$138");
+  await table.getByRole("button", { name: "新增合約價" }).click();
+  const editor = page.getByRole("dialog", { name: "新增合約價" });
+  await editor.getByRole("combobox").selectOption("P011");
+  await editor.getByRole("spinbutton").fill("95");
+  await expect(editor.getByText("NT$95／包")).toBeVisible();
+  await editor.getByRole("button", { name: "儲存" }).click();
+  await expect(page.getByText(/蔬菜春捲 合約價已更新/)).toBeVisible();
+  await page.screenshot({ path: `${SHOTS}/agreed-prices.png` });
+});
+
+test("driver screen sums today's collections per customer", async ({ page }) => {
+  await fresh(page, "/driver");
+  const box = page.getByTestId("driver-collections");
+  await expect(box.getByText("今日應收（現場）")).toBeVisible();
+  await page.getByRole("button", { name: /完成送達並登錄收款/ }).first().click();
+  await page.getByRole("button", { name: "確認送達" }).click();
+  await expect(box.getByText(/1／5 站已送達/)).toBeVisible();
+  await box.getByRole("button", { name: /各客戶收款明細/ }).click();
+  await expect(box.locator("tr", { hasText: "大樹早餐店" }).getByText("現金")).toBeVisible();
+});
+
+test("insights report: pick a topic, AI pulls ledger data, every number is verified", async ({ page }) => {
+  await fresh(page, "/");
+  await expect(page.getByTestId("revenue-profit-chart")).toBeVisible();
+  await page.getByRole("button", { name: "問 AI" }).click();
+  await page.getByRole("button", { name: "洞察報告" }).first().click();
+  const launcher = page.getByTestId("insights-launcher");
+  await launcher.getByRole("radio", { name: /客戶獲利/ }).click();
+  await launcher.getByRole("radio", { name: "上個月" }).click();
+  await launcher.getByRole("button", { name: "產生報告" }).click();
+  const card = page.getByTestId("insights-card");
+  await expect(card.getByText("客戶獲利洞察報告")).toBeVisible({ timeout: 10_000 });
+  await expect(card.getByText("數字全數來自帳本")).toBeVisible();
+  await card.getByRole("button", { name: "完整報告" }).click();
+  const report = page.getByTestId("insights-report");
+  await expect(report.getByText("長青自助餐 的 黃金魚排 合約價低於成本")).toBeVisible();
+  await page.screenshot({ path: `${SHOTS}/insights-report.png` });
+  await page.getByRole("button", { name: "關閉" }).last().click();
+  await page.getByRole("button", { name: "關閉" }).first().click();
+  await page.locator("aside nav").getByRole("link", { name: /^操作紀錄/ }).click();
+  await expect(page.getByText(/產生洞察報告「客戶獲利洞察報告」/).first()).toBeVisible();
+});
+
+test("people without margin access never see cost or margin in the overview or the insights report", async ({ page }) => {
+  await fresh(page, "/");
+  await page.getByRole("button", { name: /周筱汶/ }).click();
+  await page.getByRole("button", { name: /吳佩珊/ }).click();
+  await expect(page.getByText("本月毛利（初估）")).toHaveCount(0);
+  await expect(page.getByText("營收（近 12 週）")).toBeVisible();
+  await page.getByRole("button", { name: "問 AI" }).click();
+  await page.getByRole("button", { name: "洞察報告" }).first().click();
+  await page.getByTestId("insights-launcher").getByRole("button", { name: "產生報告" }).click();
+  const card = page.getByTestId("insights-card");
+  await expect(card).toBeVisible({ timeout: 10_000 });
+  await expect(card).not.toContainText("毛利");
+  await expect(card).not.toContainText("成本");
 });

@@ -1261,3 +1261,20 @@ export function createProduct(db: Db, ctx: ActCtx, input: ProductInput): { db: D
   tx.event({ feature: "inventory", entityType: "Product", entityId: id, action: "create", summary: `新增品項 ${p.name}（${p.spec}・凍庫 ${p.zone} 架位 ${p.shelf}）${p.costCents === null ? "・尚無成本資料" : ""}`, after: `一般價 ${v.priceStandard}／量販 ${v.priceVolume}／VIP ${v.priceVip}` });
   return { db: tx.db, value: id };
 }
+
+/* ───────────────────────── Insights ───────────────────────── */
+
+/** Read-only, but recorded: who asked for which report, from which data and model, and whether it validated. */
+export function logInsightsReport(db: Db, ctx: ActCtx, r: { id: string; title: string; range: string; model: string; dataSource: string; facts: number; issues: number; fellBack?: string }): Db {
+  if (ctx.actor.type !== "user") throw new ActionError("洞察報告需由人員產生");
+  const tx = new Tx(db, ctx);
+  tx.event({
+    feature: "ai",
+    entityType: "InsightsReport",
+    entityId: r.id,
+    action: "generate_insights",
+    summary: `產生洞察報告「${r.title}」（${r.range}）`,
+    after: `${r.model}・${r.dataSource}・引用 ${r.facts} 筆數據・${r.issues ? `驗證發現 ${r.issues} 項問題` : "數字全數通過驗證"}${r.fellBack ? `・AI 無法使用，已改用規則引擎（${r.fellBack}）` : ""}`,
+  });
+  return tx.db;
+}

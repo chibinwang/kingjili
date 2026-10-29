@@ -210,14 +210,15 @@ export function Drawer({ open, onClose, title, sub, children, footer, width = 56
 
 export function Modal({ open, onClose, title, sub, children, footer, width = 760 }: { open: boolean; onClose: () => void; title: ReactNode; sub?: ReactNode; children: ReactNode; footer?: ReactNode; width?: number }) {
   useEscape(open, onClose);
+  const titleId = useId();
   if (!open || typeof document === "undefined") return null;
   return createPortal(
     <div className="no-print fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 pt-[6vh]">
       <div className="fixed inset-0 animate-fade bg-ink/25 backdrop-blur-[1px]" onClick={onClose} />
-      <div className="relative w-full animate-rise rounded-[16px] border border-line bg-surface shadow-[var(--shadow-pop)]" style={{ maxWidth: width }}>
+      <div role="dialog" aria-modal="true" aria-labelledby={titleId} className="relative w-full animate-rise rounded-[16px] border border-line bg-surface shadow-[var(--shadow-pop)]" style={{ maxWidth: width }}>
         <div className="flex items-start justify-between gap-3 border-b border-line px-6 py-4">
           <div>
-            <div className="text-[16px] font-semibold">{title}</div>
+            <div id={titleId} className="text-[16px] font-semibold">{title}</div>
             {sub && <div className="mt-0.5 text-[12.5px] text-muted">{sub}</div>}
           </div>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="關閉">

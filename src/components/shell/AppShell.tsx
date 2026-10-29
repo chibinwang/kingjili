@@ -332,7 +332,7 @@ function Topbar({ onMenu }: { onMenu: () => void }) {
         <span className="h-1.5 w-1.5 animate-pulse-soft rounded-full bg-amber" />
         示範模式・離線
       </span>
-      <button onClick={() => setAiOpen(true)} className="inline-flex h-9 items-center gap-1.5 rounded-[10px] bg-ai-soft px-3 text-[12.5px] font-semibold text-ai hover:bg-[#e6e1f8]">
+      <button onClick={() => setAiOpen(true)} aria-label="問 AI" className="inline-flex h-9 items-center gap-1.5 rounded-[10px] bg-ai-soft px-3 text-[12.5px] font-semibold text-ai hover:bg-[#e6e1f8]">
         <Sparkles size={15} /> <span className="hidden sm:inline">問 AI</span>
       </button>
       <TodayTasksButton />
