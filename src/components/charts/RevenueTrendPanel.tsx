@@ -9,22 +9,23 @@ import { formatTWD } from "@/lib/money";
 import { formatDate } from "@/lib/time";
 
 /**
- * Overview hero: the last 12 weeks on a dark "instrument" panel.
+ * Overview hero: the last 12 weeks, in the app's own warm light palette (amber + the truck-B blue-teal).
  * Revenue and gross profit share one TWD axis (the gap between them is cost); margin % gets its own small chart below —
  * never a second y-axis. The unfinished current week is drawn dashed so it never reads as a crash.
- * Colours were checked with the dataviz palette validator against the panel surface (#151c25).
+ * Colours were checked with the dataviz palette validator against the white card surface.
  */
 const UI = {
-  surface: "#151c25",
-  grid: "#243040",
-  axis: "#7d8a9a",
-  text: "#e6ebf1",
-  muted: "#8b97a6",
-  revenue: "#c4841c",
-  profit: "#33a3b8",
-  avg: "#9aa6b6",
-  up: "#5fbf8f",
-  down: "#e07a6c",
+  surface: "#ffffff",
+  grid: "#efebe3",
+  dots: "#ebe6db",
+  axis: "#6f7782",
+  text: "#1b2430",
+  muted: "#6f7782",
+  revenue: "#c4850e",
+  profit: "#1f7aa0",
+  avg: "#9aa1aa",
+  up: "#2f7d5b",
+  down: "#b4483a",
 } as const;
 
 interface Row {
@@ -92,25 +93,27 @@ export function RevenueTrendPanel({ weeks, showMargin }: { weeks: WeekPnl[]; sho
 
   return (
     <section
-      className="relative overflow-hidden rounded-[var(--radius-card)] border text-[#e6ebf1] shadow-[var(--shadow-card)]"
-      style={{ background: UI.surface, borderColor: UI.grid, backgroundImage: `radial-gradient(${UI.grid} 1px, transparent 1px)`, backgroundSize: "18px 18px" }}
+      className="relative overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface text-ink shadow-[var(--shadow-card)]"
+      style={{ backgroundImage: `radial-gradient(${UI.dots} 1px, transparent 1px)`, backgroundSize: "18px 18px" }}
       data-testid="revenue-trend-panel"
     >
+      {/* thin accent line in the two series colours */}
+      <div className="h-[3px] w-full" style={{ background: `linear-gradient(90deg, ${UI.revenue}, ${UI.profit})` }} aria-hidden />
       <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-4">
         <div>
-          <div className="flex items-center gap-2 font-mono text-[10.5px] tracking-[.18em] text-[#8b97a6] uppercase">
+          <div className="flex items-center gap-2 font-mono text-[10.5px] tracking-[.18em] text-muted uppercase">
             <span className="relative flex h-1.5 w-1.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60" style={{ background: UI.profit }} />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full" style={{ background: UI.profit }} />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-50" style={{ background: UI.revenue }} />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full" style={{ background: UI.revenue }} />
             </span>
             Revenue{showMargin ? " · Margin" : ""} · 12W
           </div>
-          <h2 className="mt-1 text-[15px] font-semibold text-[#e6ebf1]">{showMargin ? "營收與毛利趨勢" : "營收趨勢"}</h2>
-          <p className="mt-0.5 text-[12.5px] text-[#8b97a6]">{story}</p>
+          <h2 className="mt-1 text-[15px] font-semibold text-ink">{showMargin ? "營收與毛利趨勢" : "營收趨勢"}</h2>
+          <p className="mt-0.5 text-[12.5px] text-muted">{story}</p>
         </div>
-        <div className="flex rounded-[9px] border p-[3px] text-[12px]" style={{ borderColor: UI.grid }} role="tablist">
+        <div className="flex rounded-[9px] border border-line bg-sunk p-[3px] text-[12px]" role="tablist">
           {(["chart", "table"] as const).map((v) => (
-            <button key={v} role="tab" aria-selected={view === v} onClick={() => setView(v)} className={cn("rounded-[6px] px-2.5 py-1", view === v ? "bg-white/10 text-[#e6ebf1]" : "text-[#8b97a6] hover:text-[#e6ebf1]")}>
+            <button key={v} role="tab" aria-selected={view === v} onClick={() => setView(v)} className={cn("rounded-[6px] px-2.5 py-1", view === v ? "bg-surface text-ink shadow-[var(--shadow-card)]" : "text-muted hover:text-ink")}>
               {v === "chart" ? "圖表" : "表格"}
             </button>
           ))}
@@ -130,7 +133,7 @@ export function RevenueTrendPanel({ weeks, showMargin }: { weeks: WeekPnl[]; sho
 
       {view === "chart" ? (
         <div className="px-2 pt-3 pb-2">
-          <div className="flex flex-wrap gap-x-4 gap-y-1 px-3 pb-1 text-[11.5px] text-[#8b97a6]" aria-label="圖例">
+          <div className="flex flex-wrap gap-x-4 gap-y-1 px-3 pb-1 text-[11.5px] text-muted" aria-label="圖例">
             <LineKey color={UI.revenue} label="營收" />
             {showMargin && <LineKey color={UI.profit} label="毛利" />}
             <LineKey color={UI.avg} label="營收 4 週移動平均" dashed />
@@ -141,11 +144,11 @@ export function RevenueTrendPanel({ weeks, showMargin }: { weeks: WeekPnl[]; sho
               <ComposedChart data={rows} margin={{ top: 18, right: 16, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="rtp-rev" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={UI.revenue} stopOpacity={0.28} />
+                    <stop offset="0%" stopColor={UI.revenue} stopOpacity={0.2} />
                     <stop offset="100%" stopColor={UI.revenue} stopOpacity={0.02} />
                   </linearGradient>
                   <linearGradient id="rtp-gp" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={UI.profit} stopOpacity={0.3} />
+                    <stop offset="0%" stopColor={UI.profit} stopOpacity={0.18} />
                     <stop offset="100%" stopColor={UI.profit} stopOpacity={0.03} />
                   </linearGradient>
                 </defs>
@@ -164,7 +167,7 @@ export function RevenueTrendPanel({ weeks, showMargin }: { weeks: WeekPnl[]; sho
           </div>
           {showMargin && (
             <div className="mt-1 border-t pt-2" style={{ borderColor: UI.grid }}>
-              <div className="flex items-baseline justify-between px-3 text-[11.5px] text-[#8b97a6]">
+              <div className="flex items-baseline justify-between px-3 text-[11.5px] text-muted">
                 <span>毛利率</span>
                 <span className="font-mono">12 週平均 {avgMargin.toFixed(1)}%</span>
               </div>
@@ -187,7 +190,7 @@ export function RevenueTrendPanel({ weeks, showMargin }: { weeks: WeekPnl[]; sho
       ) : (
         <div className="scroll-thin max-h-[340px] overflow-auto px-3 py-2">
           <table className="w-full text-[12.5px]">
-            <thead className="sticky top-0 text-[11.5px] text-[#8b97a6]" style={{ background: UI.surface }}>
+            <thead className="sticky top-0 bg-surface text-[11.5px] text-muted">
               <tr className="text-left">
                 <th className="py-1.5 font-medium">週</th>
                 <th className="py-1.5 text-right font-medium">營收</th>
@@ -206,7 +209,7 @@ export function RevenueTrendPanel({ weeks, showMargin }: { weeks: WeekPnl[]; sho
                   <tr key={r.key} className="border-t" style={{ borderColor: UI.grid }}>
                     <td className="py-1.5">
                       {formatDate(r.week.weekStart)}–{formatDate(r.week.weekEnd)}
-                      {r.week.partial && <span className="ml-1 font-sans text-[#8b97a6]">至今</span>}
+                      {r.week.partial && <span className="ml-1 font-sans text-muted">至今</span>}
                     </td>
                     <td className="py-1.5 text-right">{formatTWD(r.week.revenue)}</td>
                     {showMargin && (
@@ -222,7 +225,7 @@ export function RevenueTrendPanel({ weeks, showMargin }: { weeks: WeekPnl[]; sho
           </table>
         </div>
       )}
-      <div className="border-t px-5 py-2.5 text-[11.5px] text-[#8b97a6]" style={{ borderColor: UI.grid }}>
+      <div className="border-t border-line px-5 py-2.5 text-[11.5px] text-muted">
         出貨認列・未稅・週一起算{showMargin ? "；毛利依標準成本初估" : ""}。細節請在 AI 對話按「洞察報告」。示範資料。
       </div>
     </section>
@@ -235,16 +238,16 @@ function Kpi({ label, value, delta, unit, note, swatch }: { label: string; value
   const Icon = flat ? ArrowRight : up ? ArrowUpRight : ArrowDownRight;
   return (
     <div className="min-w-0 px-5 py-3" style={{ background: UI.surface }}>
-      <div className="flex items-center gap-1.5 truncate text-[11.5px] text-[#8b97a6]">
+      <div className="flex items-center gap-1.5 truncate text-[11.5px] text-muted">
         <span className="h-[2px] w-3 shrink-0 rounded-full" style={{ background: swatch }} aria-hidden />
         {label}
       </div>
-      <div className="mt-1 font-mono text-[20px] leading-tight font-semibold tracking-tight text-[#e6ebf1]">{value}</div>
+      <div className="mt-1 font-mono text-[20px] leading-tight font-semibold tracking-tight text-ink">{value}</div>
       {/* direction is carried by the arrow and the words, not by colour alone */}
       <div className="mt-0.5 flex items-center gap-1 font-mono text-[11.5px]" style={{ color: flat ? UI.muted : up ? UI.up : UI.down }}>
         <Icon size={13} />
         {flat ? "持平" : `${up ? "+" : "−"}${Math.abs(delta).toFixed(1)}${unit === "pt" ? " 個百分點" : "%"}`}
-        <span className="font-sans text-[#8b97a6]">{note}</span>
+        <span className="font-sans text-muted">{note}</span>
       </div>
     </div>
   );
@@ -268,20 +271,20 @@ function Tip({ active, payload, showMargin }: { active?: boolean; payload?: { pa
   const bp = marginBp(w);
   const row = (color: string, label: string, value: string, dashed?: boolean) => (
     <div className="flex items-center justify-between gap-5">
-      <span className="inline-flex items-center gap-1.5 text-[#8b97a6]">
+      <span className="inline-flex items-center gap-1.5 text-muted">
         <svg width="12" height="4" aria-hidden>
           <line x1="0" y1="2" x2="12" y2="2" stroke={color} strokeWidth="2" strokeDasharray={dashed ? "3 2" : undefined} />
         </svg>
         {label}
       </span>
-      <b className="font-mono font-semibold text-[#e6ebf1]">{value}</b>
+      <b className="font-mono font-semibold text-ink">{value}</b>
     </div>
   );
   return (
-    <div className="min-w-[190px] rounded-[10px] border px-3 py-2 text-[12px] shadow-[var(--shadow-pop)]" style={{ background: "#0f151d", borderColor: UI.grid }}>
-      <div className="mb-1 font-mono text-[11.5px] text-[#e6ebf1]">
+    <div className="min-w-[190px] rounded-[10px] border border-line bg-surface px-3 py-2 text-[12px] shadow-[var(--shadow-pop)]">
+      <div className="mb-1 font-mono text-[11.5px] text-ink">
         {formatDate(w.weekStart)}–{formatDate(w.weekEnd)}
-        {w.partial && <span className="ml-1 font-sans text-[#8b97a6]">本週至今</span>}
+        {w.partial && <span className="ml-1 font-sans text-muted">本週至今</span>}
       </div>
       {row(UI.revenue, "營收", `NT$${compact(whole(w.revenue))}`)}
       {showMargin && row(UI.profit, "毛利", `NT$${compact(whole(w.profit))}`)}
