@@ -28,7 +28,7 @@ test("overview business summary fits a phone", async ({ page }) => {
   await page.goto("/");
   await page.evaluate(() => localStorage.clear());
   await page.goto("/");
-  await expect(page.getByTestId("revenue-profit-chart")).toBeVisible();
+  await expect(page.getByTestId("revenue-trend-chart")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(await page.evaluate(() => window.innerWidth));
 });
 

@@ -403,7 +403,7 @@ test("driver screen sums today's collections per customer", async ({ page }) => 
 
 test("insights report: pick a topic, AI pulls ledger data, every number is verified", async ({ page }) => {
   await fresh(page, "/");
-  await expect(page.getByTestId("revenue-profit-chart")).toBeVisible();
+  await expect(page.getByTestId("revenue-trend-chart")).toBeVisible();
   await page.getByRole("button", { name: "問 AI" }).click();
   await page.getByRole("button", { name: "洞察報告" }).first().click();
   const launcher = page.getByTestId("insights-launcher");
@@ -428,7 +428,9 @@ test("people without margin access never see cost or margin in the overview or t
   await page.getByRole("button", { name: /周筱汶/ }).click();
   await page.getByRole("button", { name: /吳佩珊/ }).click();
   await expect(page.getByText("本月毛利（初估）")).toHaveCount(0);
-  await expect(page.getByText("營收（近 12 週）")).toBeVisible();
+  const panel = page.getByTestId("revenue-trend-panel");
+  await expect(panel.getByRole("heading", { name: "營收趨勢" })).toBeVisible();
+  await expect(panel).not.toContainText("毛利");
   await page.getByRole("button", { name: "問 AI" }).click();
   await page.getByRole("button", { name: "洞察報告" }).first().click();
   await page.getByTestId("insights-launcher").getByRole("button", { name: "產生報告" }).click();

@@ -3,9 +3,9 @@
 import { ArrowUpRight, ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { RevenueProfitChart } from "@/components/charts/RevenueProfitChart";
+import { RevenueTrendPanel } from "@/components/charts/RevenueTrendPanel";
 import { TodayTaskList, useTodayTasks } from "@/components/TodayTasks";
-import { Badge, Bar, Card, CardHeader, DemoNote, Metric, PageHeader, Segmented, VehicleTag } from "@/components/ui";
+import { Bar, Card, CardHeader, DemoNote, Metric, PageHeader, Segmented, VehicleTag } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { WarehouseIso } from "@/components/WarehouseIso";
 import { METHOD_LABEL } from "@/lib/domain/ar";
@@ -95,13 +95,9 @@ function Ops() {
       </Card>
 
       <div className="grid gap-5 xl:grid-cols-[1fr_420px]">
-        <Card className="self-start">
-          <CardHeader title={showMargin ? "營收與毛利（近 12 週）" : "營收（近 12 週）"} sub="出貨認列・未稅・週一起算" right={<Badge tone="mock">示範資料</Badge>} />
-          <RevenueProfitChart weeks={weeks} showMargin={showMargin} />
-          <div className="border-t border-line px-5 py-3 text-[12px] text-muted">
-            營收依送達日認列（送貨單 ≠ 發票 ≠ 收款）；毛利依標準成本初估。想看客戶、品項或進銷存的細節，請在 AI 對話按「洞察報告」。
-          </div>
-        </Card>
+        <div className="self-start">
+          <RevenueTrendPanel weeks={weeks} showMargin={showMargin} />
+        </div>
         <div className="space-y-5">
           <Card>
           <CardHeader title={`今日任務（${today.total}）`} sub="AI 先試算並跑完規則驗證，按下核准才會寫入" />
